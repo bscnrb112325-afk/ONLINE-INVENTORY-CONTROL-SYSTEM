@@ -4,6 +4,12 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
+import Orders from './pages/Orders';
+import AIInsightsPage from './pages/AIInsightsPage';
+import ZuriShop from './pages/ZuriShop';
+import Reports from './pages/Reports';
+import SupplierPortal from './pages/SupplierPortal';
+import ManagerApprovals from './pages/ManagerApprovals';
 
 function App() {
   const { isSignedIn, isLoaded } = useUser();
@@ -24,6 +30,12 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="inventory" element={<Inventory />} />
             <Route path="pos" element={<POS />} />
+            <Route path="orders" element={<Orders />} />
+            <Route path="ai-insights" element={<AIInsightsPage />} />
+            <Route path="zurishop" element={<ZuriShop />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="supplier-portal" element={<SupplierPortal />} />
+            <Route path="approvals" element={<ManagerApprovals />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         ) : (
@@ -33,5 +45,6 @@ function App() {
     </BrowserRouter>
   );
 }
+
 
 export default App;
