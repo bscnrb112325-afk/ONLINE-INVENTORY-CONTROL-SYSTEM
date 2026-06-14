@@ -3,7 +3,7 @@ import { relations } from "drizzle-orm";
 
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["admin", "manager", "cashier", "warehouse_staff"]);
-export const purchaseStatusEnum = pgEnum("purchase_status", ["pending", "completed", "cancelled"]);
+export const purchaseStatusEnum = pgEnum("purchase_status", ["pending", "shipped", "completed", "cancelled"]);
 export const goodStatusEnum = pgEnum("good_status", ["in_stock", "sold", "returned", "damaged"]);
 export const saleStatusEnum = pgEnum("sale_status", ["pending", "completed", "refunded"]);
 export const paymentMethodEnum = pgEnum("payment_method", ["cash", "mpesa", "card", "bank_transfer"]);
@@ -12,6 +12,7 @@ export const paymentTypeEnum = pgEnum("payment_type", ["supplier_payment", "cust
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Clerk ID
   email: text("email").notNull().unique(),
+  password: text("password").notNull().default("system_password"),
   name: text("name"),
   phone: text("phone"),
   role: userRoleEnum("role").default("cashier").notNull(),
@@ -62,6 +63,8 @@ export const purchases = pgTable("purchases", {
   id: uuid("id").defaultRandom().primaryKey(),
   supplierId: uuid("supplier_id").notNull().references(() => suppliers.id, { onDelete: "restrict" }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }), // user who recorded it
+  goodId: uuid("good_id"),
+  expectedQty: integer("expected_qty").notNull().default(0),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   status: purchaseStatusEnum("status").default("pending").notNull(),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
@@ -70,14 +73,20 @@ export const purchases = pgTable("purchases", {
 
 export const goods = pgTable("goods", {
   id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull().default(''), // Item Name
+  description: text("description"), // Item Description
   serial: text("serial").notNull().unique(), // Barcode or Serial
   subCatId: uuid("sub_cat_id").notNull().references(() => subCategories.id, { onDelete: "restrict" }),
   purchaseId: uuid("purchase_id").references(() => purchases.id, { onDelete: "set null" }),
+  supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
   buyRate: numeric("buy_rate", { precision: 12, scale: 2 }).notNull(),
   sellRate: numeric("sell_rate", { precision: 12, scale: 2 }).notNull(),
   qty: integer("qty").notNull().default(1),
+  reservedQty: integer("reserved_qty").notNull().default(0),
+  reorderThreshold: integer("reorder_threshold").notNull().default(10),
   status: goodStatusEnum("status").default("in_stock").notNull(),
-  imageGoodId: text("image_good_id"), // Could be cloud storage ID
+  imageGoodId: text("image_good_id"), // Could be cloud storage ID or URL
+  productDetails: text("product_details"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -89,6 +98,7 @@ export const sales = pgTable("sales", {
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum("payment_method").default("cash").notNull(),
   status: saleStatusEnum("status").default("completed").notNull(),
+  orderStatus: text("order_status").default("Pending").notNull(), // "Pending" -> "Paid" -> "Processing" -> "Packed" -> "Shipped" -> "Delivered"
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -139,6 +149,64 @@ export const activityLogs = pgTable("activity_logs", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+// New Intelligent Integrated Commerce System tables
+export const notifications = pgTable("notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  priority: text("priority").default("medium").notNull(), // "low", "medium", "high"
+  status: text("status").default("unread").notNull(), // "unread", "read"
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const aiInsights = pgTable("ai_insights", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  type: text("type").notNull(), // "demand_forecast", "slow_moving", "dynamic_pricing", "restock"
+  productId: uuid("product_id").references(() => goods.id, { onDelete: "cascade" }),
+  prediction: text("prediction").notNull(), // JSON payload string
+  confidence: numeric("confidence", { precision: 4, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const events = pgTable("events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  eventName: text("event_name").notNull(), // e.g. "ORDER_CREATED", "PAYMENT_COMPLETED"
+  module: text("module").notNull(), // e.g. "orders", "payments", "inventory", "ai"
+  payload: text("payload"), // JSON payload string
+  timestamp: timestamp("timestamp", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const recommendations = pgTable("recommendations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  productId: uuid("product_id").notNull().references(() => goods.id, { onDelete: "cascade" }),
+  action: text("action").notNull(), // "restock", "price_adjust", "promote"
+  reason: text("reason").notNull(),
+  recommendedQty: integer("recommended_qty").notNull().default(0),
+  status: text("status").default("pending").notNull(), // "pending", "approved", "dismissed"
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const supplierBids = pgTable("supplier_bids", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  recommendationId: uuid("recommendation_id").notNull().references(() => recommendations.id, { onDelete: "cascade" }),
+  supplierId: uuid("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }),
+  bidPrice: numeric("bid_price", { precision: 12, scale: 2 }).notNull(),
+  deliveryTimeDays: integer("delivery_time_days").notNull(),
+  reliabilityScore: numeric("reliability_score", { precision: 4, scale: 2 }).notNull(),
+  status: text("status").default("pending").notNull(), // "pending", "approved", "rejected"
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const analyticsWarehouse = pgTable("analytics_warehouse", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  reportDate: timestamp("report_date", { mode: "date" }).notNull(),
+  totalSales: numeric("total_sales", { precision: 12, scale: 2 }).notNull(),
+  totalProfit: numeric("total_profit", { precision: 12, scale: 2 }).notNull(),
+  deadStockValue: numeric("dead_stock_value", { precision: 12, scale: 2 }).notNull(),
+  inventoryTurnoverRate: numeric("inventory_turnover_rate", { precision: 5, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
 // Relations
 export const categoriesRelations = relations(categories, ({ many }) => ({
   subCategories: many(subCategories),
@@ -152,7 +220,11 @@ export const subCategoriesRelations = relations(subCategories, ({ one, many }) =
 export const goodsRelations = relations(goods, ({ one, many }) => ({
   subCategory: one(subCategories, { fields: [goods.subCatId], references: [subCategories.id] }),
   purchase: one(purchases, { fields: [goods.purchaseId], references: [purchases.id] }),
+  supplier: one(suppliers, { fields: [goods.supplierId], references: [suppliers.id] }),
   saleItems: many(saleItems),
+  aiInsights: many(aiInsights),
+  recommendations: many(recommendations),
+  supplierBids: many(supplierBids),
 }));
 
 export const salesRelations = relations(sales, ({ one, many }) => ({
@@ -170,4 +242,22 @@ export const purchasesRelations = relations(purchases, ({ one, many }) => ({
   supplier: one(suppliers, { fields: [purchases.supplierId], references: [suppliers.id] }),
   user: one(users, { fields: [purchases.userId], references: [users.id] }),
   goods: many(goods),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+}));
+
+export const aiInsightsRelations = relations(aiInsights, ({ one }) => ({
+  good: one(goods, { fields: [aiInsights.productId], references: [goods.id] }),
+}));
+
+export const recommendationsRelations = relations(recommendations, ({ one, many }) => ({
+  good: one(goods, { fields: [recommendations.productId], references: [goods.id] }),
+  supplierBids: many(supplierBids),
+}));
+
+export const supplierBidsRelations = relations(supplierBids, ({ one }) => ({
+  recommendation: one(recommendations, { fields: [supplierBids.recommendationId], references: [recommendations.id] }),
+  supplier: one(suppliers, { fields: [supplierBids.supplierId], references: [suppliers.id] }),
 }));

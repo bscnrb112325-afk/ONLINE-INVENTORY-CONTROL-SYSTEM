@@ -27,7 +27,15 @@ export const createSupplier = async (req: Request, res: Response) => {
 export const getPurchases = async (req: Request, res: Response) => {
   try {
     const allPurchases = await db.query.purchases.findMany({
-      with: { supplier: true, user: true },
+      with: { 
+        supplier: true, 
+        user: true,
+        goods: {
+          with: {
+            subCategory: true
+          }
+        }
+      },
     });
     res.json(allPurchases);
   } catch (error: any) {
