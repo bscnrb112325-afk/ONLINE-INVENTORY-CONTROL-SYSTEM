@@ -10,6 +10,7 @@ import ZuriShop from './pages/ZuriShop';
 import Reports from './pages/Reports';
 import SupplierPortal from './pages/SupplierPortal';
 import ManagerApprovals from './pages/ManagerApprovals';
+import Settings from './pages/Settings';
 
 function App() {
   const { isSignedIn, isLoaded } = useUser();
@@ -36,6 +37,7 @@ function App() {
             <Route path="reports" element={<Reports />} />
             <Route path="supplier-portal" element={<SupplierPortal />} />
             <Route path="approvals" element={<ManagerApprovals />} />
+            <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         ) : (
