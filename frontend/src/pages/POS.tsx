@@ -271,7 +271,7 @@ const POS = () => {
       api.post('/sales/mpesa/stkpush', {
         phone: mpesaPhone,
         amount: total.toFixed(0),
-        reference: 'StockIQ POS Checkout',
+        reference: 'OICS POS Checkout',
       })
       .then((res) => {
         if (res.data.data && res.data.data.CheckoutRequestID) {
@@ -657,7 +657,7 @@ const POS = () => {
             {/* Printable Receipt Area */}
             <div className="space-y-4 font-mono text-xs" id="printable-receipt">
               <div className="text-center space-y-1 pb-4 border-b border-gray-300">
-                <h3 className="font-bold text-lg uppercase tracking-wider">StockIQ POS</h3>
+                <h3 className="font-bold text-lg uppercase tracking-wider">OICS POS</h3>
                 <p>Nairobi, Kenya</p>
                 <p>Tel: +254 700 000 000</p>
                 <p className="pt-2">Date: {new Date().toLocaleString()}</p>

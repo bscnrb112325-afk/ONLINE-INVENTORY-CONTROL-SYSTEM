@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Package, ShoppingCart, Truck, Brain, ShoppingBag, BarChart3, Building2, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Truck, Brain, ShoppingBag, BarChart3, Building2, CheckCircle2, Settings } from 'lucide-react';
 
 const Sidebar = () => {
   const location = useLocation();
@@ -11,7 +11,7 @@ const Sidebar = () => {
     { name: 'ZuriShop', path: '/zurishop', icon: <ShoppingBag size={20} /> },
     { name: 'Orders Pipeline', path: '/orders', icon: <Truck size={20} /> },
     { name: 'Manager Approvals', path: '/approvals', icon: <CheckCircle2 size={20} /> },
-    { name: 'Supplier Portal', path: '/supplier-portal', icon: <Building2 size={20} /> },
+    { name: 'Settings', path: '/settings', icon: <Settings size={20} /> },
   ];
 
   return (
@@ -19,7 +19,7 @@ const Sidebar = () => {
       <div className="flex items-center justify-center h-16 border-b border-base-200">
         <h1 className="text-xl font-bold text-primary flex items-center gap-2">
           <Brain className="text-primary animate-pulse" size={24} />
-          <span>StockIQ</span>
+          <span>OICS</span>
         </h1>
       </div>
       <div className="flex-1 overflow-y-auto py-4">
