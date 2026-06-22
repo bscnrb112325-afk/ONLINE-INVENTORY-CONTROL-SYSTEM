@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import random
 
-app = FastAPI(title="StockIQ AI Decision Engine 🧠")
+app = FastAPI(title="OICS AI Decision Engine 🧠")
 
 class SalesData(BaseModel):
     product_id: str
@@ -40,7 +40,7 @@ class ReorderResponse(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"message": "StockIQ AI Decision Engine is running 🧠"}
+    return {"message": "OICS AI Decision Engine is running 🧠"}
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict_demand(data: SalesData):

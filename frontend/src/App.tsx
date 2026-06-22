@@ -10,9 +10,30 @@ import ZuriShop from './pages/ZuriShop';
 import Reports from './pages/Reports';
 import SupplierPortal from './pages/SupplierPortal';
 import ManagerApprovals from './pages/ManagerApprovals';
+import Settings from './pages/Settings';
+import { SettingsProvider } from './context/SettingsContext';
+import { api } from './api';
+import { useEffect, useState } from 'react';
 
 function App() {
-  const { isSignedIn, isLoaded } = useUser();
+  const { user, isSignedIn, isLoaded } = useUser();
+  const [dbUser, setDbUser] = useState<any>(null);
+
+  useEffect(() => {
+    if (isSignedIn && user) {
+      // Sync user to DB and get their role
+      api.post('/users/sync', {
+        email: user.primaryEmailAddress?.emailAddress,
+        name: user.fullName || user.firstName,
+        imageUrl: user.imageUrl,
+      }).then(res => {
+        setDbUser(res.data);
+        localStorage.setItem('userRole', res.data.role);
+      }).catch(err => {
+        console.error('Failed to sync user', err);
+      });
+    }
+  }, [isSignedIn, user]);
 
   if (!isLoaded) {
     return <div className="flex h-screen items-center justify-center"><span className="loading loading-spinner loading-lg text-primary"></span></div>;
@@ -20,31 +41,36 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/sign-in/*" element={<div className="flex h-screen items-center justify-center bg-base-200"><SignIn routing="path" path="/sign-in" /></div>} />
-        <Route path="/sign-up/*" element={<div className="flex h-screen items-center justify-center bg-base-200"><SignUp routing="path" path="/sign-up" /></div>} />
-        
-        {/* Protected Routes */}
-        {isSignedIn ? (
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="inventory" element={<Inventory />} />
-            <Route path="pos" element={<POS />} />
-            <Route path="orders" element={<Orders />} />
-            <Route path="ai-insights" element={<AIInsightsPage />} />
-            <Route path="zurishop" element={<ZuriShop />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="supplier-portal" element={<SupplierPortal />} />
-            <Route path="approvals" element={<ManagerApprovals />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        ) : (
-          <Route path="*" element={<Navigate to="/sign-in" replace />} />
-        )}
-      </Routes>
+      <SettingsProvider>
+        <div className="min-h-screen bg-base-200 text-base-content font-sans">
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/sign-in/*" element={<div className="flex h-screen items-center justify-center bg-base-200"><SignIn routing="path" path="/sign-in" /></div>} />
+            <Route path="/sign-up/*" element={<div className="flex h-screen items-center justify-center bg-base-200"><SignUp routing="path" path="/sign-up" /></div>} />
+            
+            {/* Protected Routes */}
+            {isSignedIn ? (
+              <Route path="/" element={<Layout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="inventory" element={<Inventory />} />
+                <Route path="pos" element={<POS />} />
+                <Route path="orders" element={<Orders />} />
+                <Route path="ai-insights" element={<AIInsightsPage />} />
+                <Route path="zurishop" element={<ZuriShop />} />
+                <Route path="reports" element={<Reports />} />
+                <Route path="supplier-portal" element={<SupplierPortal />} />
+                <Route path="approvals" element={<ManagerApprovals />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+            ) : (
+              <Route path="*" element={<Navigate to="/sign-in" replace />} />
+            )}
+          </Routes>
+        </div>
+      </SettingsProvider>
     </BrowserRouter>
   );
 }
-
 
 export default App;

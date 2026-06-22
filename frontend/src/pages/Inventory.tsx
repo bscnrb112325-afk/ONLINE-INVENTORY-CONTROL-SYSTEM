@@ -11,6 +11,13 @@ const Inventory = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editGoodId, setEditGoodId] = useState('');
 
+  // Category & Supplier Modals
+  const [isCatModalOpen, setIsCatModalOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [isSupModalOpen, setIsSupModalOpen] = useState(false);
+  const [newSupName, setNewSupName] = useState('');
+  const [newSupEmail, setNewSupEmail] = useState('');
+
   // Form states
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -23,6 +30,7 @@ const Inventory = () => {
   const [reorderThreshold, setReorderThreshold] = useState('10');
   const [imageGoodId, setImageGoodId] = useState('');
   const [productDetails, setProductDetails] = useState('');
+  const [dismissedLowStock, setDismissedLowStock] = useState<string[]>([]);
 
   // Fetch goods
   const { data: goods = [], isLoading: goodsLoading } = useQuery({
@@ -95,6 +103,57 @@ const Inventory = () => {
     },
   });
 
+  const deleteGoodMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/inventory/goods/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['goods'] });
+    },
+  });
+
+  const manualRestockMutation = useMutation({
+    mutationFn: async ({ id, qty }: { id: string, qty: number }) => {
+      const res = await api.post(`/inventory/goods/${id}/restock`, { qty });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recommendations'] });
+      alert("Restock request submitted successfully and is pending approval.");
+    },
+  });
+
+  const addCatMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await api.post('/inventory/subcategories', payload);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['subcategories'] });
+      setIsCatModalOpen(false);
+      setNewCatName('');
+      if (data && data.id) {
+        setSubCatId(data.id);
+      }
+    }
+  });
+
+  const addSupMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await api.post('/inventory/suppliers', payload);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      setIsSupModalOpen(false);
+      setNewSupName('');
+      setNewSupEmail('');
+      if (data && data.id) {
+        setSupplierId(data.id);
+      }
+    }
+  });
+
   const resetForm = () => {
     setName('');
     setDescription('');
@@ -130,6 +189,13 @@ const Inventory = () => {
 
   // Filter recommendations for restocks
   const activeRestocks = recommendations.filter((r: any) => r.action === 'restock' && r.status === 'pending');
+
+  // Filter goods that are low on stock, have no pending restock, and are not dismissed
+  const visibleLowStockItems = goods.filter(
+    (g: any) => g.qty <= (g.reorderThreshold ?? 10) && 
+    !activeRestocks.some((r: any) => r.good?.id === g.id) &&
+    !dismissedLowStock.includes(g.id)
+  );
 
   // Filter goods based on search and subcategory name
   const filteredGoods = goods.filter((good: any) => {
@@ -333,9 +399,9 @@ const Inventory = () => {
                         {good.imageGoodId && <img src={good.imageGoodId} alt="Product" className="w-8 h-8 rounded-md inline-block mr-2 object-cover" />}
                         {good.serial}
                       </td>
-                      <td className="font-semibold text-sm">
-                        {good.name || good.subCategory?.name || 'Inventory Good'}
-                        {good.description && <span className="block text-xs font-normal text-base-content/60">{good.description}</span>}
+                      <td className="font-semibold text-sm max-w-[200px]">
+                        <div className="truncate">{good.name || good.subCategory?.name || 'Inventory Good'}</div>
+                        {good.description && <span className="block text-[10px] font-normal text-base-content/50 truncate mt-0.5" title={good.description}>{good.description}</span>}
                       </td>
                       <td>
                         <span className="badge badge-ghost badge-sm text-xs font-semibold">
@@ -361,12 +427,37 @@ const Inventory = () => {
                         )}
                       </td>
                       <td>
-                        <button 
-                          className="btn btn-xs btn-outline"
-                          onClick={() => handleEditClick(good)}
-                        >
-                          Edit
-                        </button>
+                        <div className="flex gap-2">
+                          <button 
+                            className="btn btn-xs btn-outline"
+                            onClick={() => handleEditClick(good)}
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            className="btn btn-xs btn-outline btn-warning"
+                            onClick={() => {
+                              const qty = window.prompt("Enter number of units to request for restock:");
+                              if (qty && !isNaN(Number(qty)) && Number(qty) > 0) {
+                                manualRestockMutation.mutate({ id: good.id, qty: Number(qty) });
+                              }
+                            }}
+                            disabled={manualRestockMutation.isPending}
+                          >
+                            Restock
+                          </button>
+                          <button 
+                            className="btn btn-xs btn-outline btn-error"
+                            onClick={() => {
+                              if (window.confirm("Are you sure you want to permanently delete this product?")) {
+                                deleteGoodMutation.mutate(good.id);
+                              }
+                            }}
+                            disabled={deleteGoodMutation.isPending}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -436,7 +527,10 @@ const Inventory = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="form-control">
-                  <label className="label font-semibold text-xs">Category Product</label>
+                  <label className="label font-semibold text-xs flex justify-between">
+                    <span>Category Product</span>
+                    <button type="button" className="text-primary text-xs" onClick={() => setIsCatModalOpen(true)}>+ New</button>
+                  </label>
                   <select 
                     className="select select-bordered"
                     value={subCatId}
@@ -450,7 +544,10 @@ const Inventory = () => {
                   </select>
                 </div>
                 <div className="form-control">
-                  <label className="label font-semibold text-xs">Supplier</label>
+                  <label className="label font-semibold text-xs flex justify-between">
+                    <span>Supplier</span>
+                    <button type="button" className="text-primary text-xs" onClick={() => setIsSupModalOpen(true)}>+ New</button>
+                  </label>
                   <select 
                     className="select select-bordered"
                     value={supplierId}
@@ -534,6 +631,116 @@ const Inventory = () => {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {/* Add Category Modal */}
+      {isCatModalOpen && (
+        <div className="modal modal-open z-[1000]">
+          <div className="modal-box rounded-2xl max-w-sm shadow-2xl">
+            <h3 className="font-bold text-lg">New Category</h3>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (newCatName) addCatMutation.mutate({ name: newCatName, description: 'New category' });
+            }}>
+              <div className="form-control mt-4">
+                <label className="label font-semibold text-xs">Category Name</label>
+                <input 
+                  type="text" 
+                  className="input input-bordered"
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={() => setIsCatModalOpen(false)}>Cancel</button>
+                <button 
+                  type="submit"
+                  className="btn btn-primary" 
+                  disabled={!newCatName || addCatMutation.isPending}
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Supplier Modal */}
+      {isSupModalOpen && (
+        <div className="modal modal-open z-[1000]">
+          <div className="modal-box rounded-2xl max-w-sm shadow-2xl">
+            <h3 className="font-bold text-lg">New Supplier</h3>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (newSupName) addSupMutation.mutate({ name: newSupName, email: newSupEmail, phone: '', address: '' });
+            }}>
+              <div className="form-control mt-4">
+                <label className="label font-semibold text-xs">Supplier Name</label>
+                <input 
+                  type="text" 
+                  className="input input-bordered"
+                  value={newSupName}
+                  onChange={(e) => setNewSupName(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="form-control mt-4">
+                <label className="label font-semibold text-xs">Email</label>
+                <input 
+                  type="email" 
+                  className="input input-bordered"
+                  value={newSupEmail}
+                  onChange={(e) => setNewSupEmail(e.target.value)}
+                />
+              </div>
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={() => setIsSupModalOpen(false)}>Cancel</button>
+                <button 
+                  type="submit"
+                  className="btn btn-primary" 
+                  disabled={!newSupName || addSupMutation.isPending}
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Low Stock Popup Notification */}
+      {visibleLowStockItems.length > 0 && (
+        <div className="toast toast-end toast-bottom z-9999 mb-4 mr-4">
+          {visibleLowStockItems.map((item: any) => (
+            <div className="alert shadow-2xl border border-warning/50 bg-base-100 flex-col items-start gap-2 max-w-sm" key={item.id}>
+              <div className="flex justify-between w-full items-center gap-4">
+                <div className="flex items-center gap-2 text-warning">
+                  <AlertTriangle size={20} />
+                  <span className="font-bold">Low Stock Alert</span>
+                </div>
+                <button className="btn btn-ghost btn-xs btn-circle" onClick={() => setDismissedLowStock(prev => [...prev, item.id])}>✕</button>
+              </div>
+              <div className="text-sm">
+                <span className="font-semibold">{item.name || item.subCategory?.name || item.serial}</span> is down to <span className="font-bold text-error">{item.qty}</span> units (Threshold: {item.reorderThreshold ?? 10}).
+              </div>
+              <div className="w-full flex justify-end mt-1">
+                <button 
+                  className="btn btn-sm btn-primary"
+                  onClick={() => {
+                    manualRestockMutation.mutate({ id: item.id, qty: 50 });
+                    setDismissedLowStock(prev => [...prev, item.id]);
+                  }}
+                  disabled={manualRestockMutation.isPending}
+                >
+                  Send to Supplier Portal
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

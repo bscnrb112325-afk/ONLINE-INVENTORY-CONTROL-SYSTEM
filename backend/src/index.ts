@@ -14,6 +14,7 @@ import supplierPortalRoutes from "./routes/supplierPortalRoutes";
 import approvalRoutes from "./routes/approvalRoutes";
 import streamRoutes from "./routes/streamRoutes";
 import customerRoutes from "./routes/customerRoutes";
+import settingsRoutes from "./routes/settingsRoutes";
 import { initEventBusListeners } from "./services/eventBus";
 import { initAnalyticsCron } from "./services/analyticsJob";
 
@@ -21,8 +22,8 @@ const app = express();
 
 app.use(cors({ origin: ENV.FRONTEND_URL, credentials: true }));
 app.use(clerkMiddleware());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.get("/api/health", (req: express.Request, res: express.Response) => {
   res.json({
@@ -39,6 +40,7 @@ app.use("/api/supplier-portal", supplierPortalRoutes);
 app.use("/api/approvals", approvalRoutes);
 app.use("/api/stream", streamRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/settings", settingsRoutes);
 
 // Initialize Event Bus Listeners
 initEventBusListeners();

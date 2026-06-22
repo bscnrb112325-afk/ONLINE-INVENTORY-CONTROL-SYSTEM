@@ -14,7 +14,7 @@ const Navbar = () => {
       
       <div className="flex-1">
         <h1 className="text-xl font-semibold hidden md:block">
-          Welcome back, {user?.firstName || 'User'}
+          WELCOME BACK TO ONLINE INVENTORY CONTROL SYSTEM
         </h1>
       </div>
       
