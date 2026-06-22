@@ -89,6 +89,7 @@ const POS = () => {
       setSplitAmounts({ cash: 0, mpesa: 0, card: 0 });
       setIsWaitingForMpesa(false);
       setStkPushRequestId(null);
+      setIsProcessing(false);
       setCheckoutSuccess(true);
       setShowReceipt(true); // Open Receipt Modal
       setTimeout(() => setCheckoutSuccess(false), 5000);
@@ -661,7 +662,7 @@ const POS = () => {
                 <p>Nairobi, Kenya</p>
                 <p>Tel: +254 700 000 000</p>
                 <p className="pt-2">Date: {new Date().toLocaleString()}</p>
-                <p>Cashier: {lastSalePayload.userId}</p>
+                <p>Cashier: {user?.firstName || user?.fullName || 'System'}</p>
               </div>
 
               <div className="py-2 border-b border-gray-300">
@@ -759,14 +760,18 @@ const POS = () => {
                   onClick={() => {
                     const printContent = document.getElementById('printable-receipt')?.innerHTML;
                     if (printContent) {
-                      const printWindow = window.open('', '', 'width=300,height=600');
+                      const printWindow = window.open('', '', 'width=350,height=600');
                       if (printWindow) {
-                        printWindow.document.write('<html><head><title>Receipt</title><style>body { font-family: monospace; padding: 10px; margin: 0; }</style></head><body>');
+                        printWindow.document.write('<html><head><title>Receipt</title><script src="https://cdn.tailwindcss.com"></script><style>body { font-family: monospace; padding: 20px; margin: 0; }</style></head><body>');
                         printWindow.document.write(printContent);
                         printWindow.document.write('</body></html>');
                         printWindow.document.close();
-                        printWindow.focus();
-                        printWindow.print();
+                        
+                        // Wait for Tailwind CDN to apply styles before printing
+                        setTimeout(() => {
+                          printWindow.focus();
+                          printWindow.print();
+                        }, 800);
                       }
                     }
                   }}

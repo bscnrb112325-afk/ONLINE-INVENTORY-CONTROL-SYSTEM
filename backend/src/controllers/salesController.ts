@@ -16,6 +16,34 @@ export const getSales = async (req: Request, res: Response) => {
   }
 };
 
+export const getSaleById = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const sale = await db.query.sales.findFirst({
+      where: eq(sales.id, id),
+      with: { 
+        saleItems: {
+          with: {
+            good: {
+              with: {
+                subCategory: true
+              }
+            }
+          }
+        }, 
+        customer: true, 
+        user: true 
+      },
+    });
+    if (!sale) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    res.json(sale);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const createSale = async (req: Request, res: Response) => {
   try {
     const { customerId, customerName, customerPhone, userId, items, discountAmount = 0, paymentMethod, payments: splitPayments, amountTendered = 0 } = req.body;
@@ -77,7 +105,7 @@ export const createSale = async (req: Request, res: Response) => {
       totalAmount: totalAmount.toString(),
       paymentMethod,
       status: "pending",
-      orderStatus: "pending",
+      orderStatus: "Pending",
     }).returning();
 
     // 2. Insert sale items and reduce stock

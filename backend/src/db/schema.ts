@@ -2,8 +2,8 @@ import { pgTable, text, timestamp, uuid, pgEnum, integer, numeric, boolean } fro
 import { relations } from "drizzle-orm";
 
 // Enums
-export const userRoleEnum = pgEnum("user_role", ["admin", "manager", "cashier", "warehouse_staff"]);
-export const purchaseStatusEnum = pgEnum("purchase_status", ["pending", "shipped", "completed", "cancelled"]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "manager", "inventory", "pos_staff", "supplier", "cashier"]);
+export const purchaseStatusEnum = pgEnum("purchase_status", ["pending", "accepted", "rejected", "shipped", "completed", "cancelled"]);
 export const goodStatusEnum = pgEnum("good_status", ["in_stock", "sold", "returned", "damaged"]);
 export const saleStatusEnum = pgEnum("sale_status", ["pending", "completed", "refunded"]);
 export const paymentMethodEnum = pgEnum("payment_method", ["cash", "mpesa", "card", "bank_transfer"]);
@@ -15,7 +15,7 @@ export const users = pgTable("users", {
   password: text("password").notNull().default("system_password"),
   name: text("name"),
   phone: text("phone"),
-  role: userRoleEnum("role").default("cashier").notNull(),
+  role: userRoleEnum("role").default("pos_staff").notNull(),
   avatarDriveId: text("avatar_drive_id"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
@@ -132,13 +132,6 @@ export const expenses = pgTable("expenses", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
-export const settings = pgTable("settings", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  key: text("key").notNull().unique(),
-  value: text("value").notNull(),
-  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-});
-
 export const activityLogs = pgTable("activity_logs", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
@@ -207,6 +200,24 @@ export const analyticsWarehouse = pgTable("analytics_warehouse", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+export const supplierDocuments = pgTable("supplier_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  supplierId: uuid("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }),
+  purchaseId: uuid("purchase_id").references(() => purchases.id, { onDelete: "set null" }), // Optional link to an order
+  title: text("title").notNull(),
+  type: text("type").notNull(), // "invoice", "delivery_note", "other"
+  fileUrl: text("file_url").notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const supplierNotifications = pgTable("supplier_notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  supplierId: uuid("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
 // Relations
 export const categoriesRelations = relations(categories, ({ many }) => ({
   subCategories: many(subCategories),
@@ -261,3 +272,24 @@ export const supplierBidsRelations = relations(supplierBids, ({ one }) => ({
   recommendation: one(recommendations, { fields: [supplierBids.recommendationId], references: [recommendations.id] }),
   supplier: one(suppliers, { fields: [supplierBids.supplierId], references: [suppliers.id] }),
 }));
+
+export const supplierDocumentsRelations = relations(supplierDocuments, ({ one }) => ({
+  supplier: one(suppliers, { fields: [supplierDocuments.supplierId], references: [suppliers.id] }),
+  purchase: one(purchases, { fields: [supplierDocuments.purchaseId], references: [purchases.id] }),
+}));
+
+export const supplierNotificationsRelations = relations(supplierNotifications, ({ one }) => ({
+  supplier: one(suppliers, { fields: [supplierNotifications.supplierId], references: [suppliers.id] }),
+}));
+
+export const settings = pgTable("settings", {
+  id: text("id").primaryKey().default("default"),
+  companyName: text("company_name").notNull().default("Online Inventory Control System"),
+  logoUrl: text("logo_url").notNull().default(""),
+  currency: text("currency").notNull().default("KSh"),
+  taxRate: numeric("tax_rate", { precision: 5, scale: 2 }).notNull().default("0.00"),
+  theme: text("theme").notNull().default("light"),
+  font: text("font").notNull().default("Inter"),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
+});

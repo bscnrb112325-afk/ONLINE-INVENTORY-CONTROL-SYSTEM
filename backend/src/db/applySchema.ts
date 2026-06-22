@@ -15,6 +15,57 @@ async function run() {
       ALTER TABLE "sales" ADD COLUMN IF NOT EXISTS "order_status" text DEFAULT 'Pending' NOT NULL;
     `);
 
+    console.log("Fixing UUID to TEXT for users.id and all foreign keys...");
+    try {
+      await client.query(`
+        ALTER TABLE "sales" DROP CONSTRAINT IF EXISTS "sales_user_id_users_id_fk";
+        ALTER TABLE "purchases" DROP CONSTRAINT IF EXISTS "purchases_user_id_users_id_fk";
+        ALTER TABLE "expenses" DROP CONSTRAINT IF EXISTS "expenses_user_id_users_id_fk";
+        ALTER TABLE "activity_logs" DROP CONSTRAINT IF EXISTS "activity_logs_user_id_users_id_fk";
+        ALTER TABLE "notifications" DROP CONSTRAINT IF EXISTS "notifications_user_id_users_id_fk";
+
+        ALTER TABLE "users" ALTER COLUMN "id" TYPE text;
+
+        ALTER TABLE "sales" ALTER COLUMN "user_id" TYPE text;
+        ALTER TABLE "purchases" ALTER COLUMN "user_id" TYPE text;
+        ALTER TABLE "expenses" ALTER COLUMN "user_id" TYPE text;
+        ALTER TABLE "activity_logs" ALTER COLUMN "user_id" TYPE text;
+        ALTER TABLE "notifications" ALTER COLUMN "user_id" TYPE text;
+
+        ALTER TABLE "sales" ADD CONSTRAINT "sales_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE restrict;
+        ALTER TABLE "purchases" ADD CONSTRAINT "purchases_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE restrict;
+        ALTER TABLE "expenses" ADD CONSTRAINT "expenses_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE set null;
+        ALTER TABLE "activity_logs" ADD CONSTRAINT "activity_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE set null;
+        ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade;
+      `);
+      console.log("Successfully fixed UUID -> TEXT for user relationships.");
+    } catch (e: any) {
+      console.log("UUID->TEXT fix skipped or already applied:", e.message);
+    }
+
+    console.log("Dropping NOT NULL constraints for legacy columns...");
+    try {
+      await client.query(`
+        ALTER TABLE "users" ALTER COLUMN "role_id" DROP NOT NULL;
+        ALTER TABLE "users" ALTER COLUMN "status" DROP NOT NULL;
+      `);
+    } catch (e: any) {
+      console.log("Legacy column NOT NULL drop skipped:", e.message);
+    }
+
+    console.log("Applying ALTER TABLE on users...");
+    await client.query(`
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email" text;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password" text DEFAULT 'system_password' NOT NULL;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "name" text;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "phone" text;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "role" text DEFAULT 'cashier' NOT NULL;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_drive_id" text;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "is_active" boolean DEFAULT true NOT NULL;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "created_at" timestamp DEFAULT now() NOT NULL;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "updated_at" timestamp DEFAULT now() NOT NULL;
+    `);
+
     console.log("Applying ALTER TABLE on goods...");
     await client.query(`
       ALTER TABLE "goods" ADD COLUMN IF NOT EXISTS "name" text DEFAULT '' NOT NULL;
@@ -148,6 +199,34 @@ async function run() {
         "created_at" timestamp DEFAULT now() NOT NULL,
         CONSTRAINT "supplier_bids_recommendation_id_recommendations_id_fk" FOREIGN KEY ("recommendation_id") REFERENCES "recommendations"("id") ON DELETE cascade,
         CONSTRAINT "supplier_bids_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "suppliers"("id") ON DELETE cascade
+      );
+    `);
+
+    console.log("Applying Supplier Portal schema updates...");
+    try {
+      await client.query(`ALTER TYPE purchase_status ADD VALUE IF NOT EXISTS 'accepted';`);
+      await client.query(`ALTER TYPE purchase_status ADD VALUE IF NOT EXISTS 'rejected';`);
+    } catch (e: any) {
+      console.log("Enum values 'accepted' / 'rejected' may already exist or cannot be added inside transaction block (will retry outside if needed).", e.message);
+    }
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "supplier_documents" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "supplier_id" uuid NOT NULL REFERENCES "suppliers"("id") ON DELETE cascade,
+        "purchase_id" uuid REFERENCES "purchases"("id") ON DELETE set null,
+        "title" text NOT NULL,
+        "type" text NOT NULL,
+        "file_url" text NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS "supplier_notifications" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "supplier_id" uuid NOT NULL REFERENCES "suppliers"("id") ON DELETE cascade,
+        "message" text NOT NULL,
+        "is_read" boolean DEFAULT false NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL
       );
     `);
 

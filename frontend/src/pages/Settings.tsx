@@ -1,290 +1,275 @@
-import React, { useState, useEffect } from 'react';
-import { User, Store, Bell, Palette, Save, Settings as SettingsIcon } from 'lucide-react';
+
+import { useState, useEffect } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSettings } from '../context/SettingsContext';
+import { api } from '../api';
+import { Save, Building2, Palette, Upload } from 'lucide-react';
+
+const availableThemes = [
+  "light", "dark", "cupcake", "corporate", "synthwave", "retro", 
+  "cyberpunk", "valentine", "halloween", "garden", "forest", "aqua", 
+  "lofi", "pastel", "fantasy", "wireframe", "black", "luxury", 
+  "dracula", "cmyk", "autumn", "business", "acid", "lemonade", 
+  "night", "coffee", "winter", "dim", "nord", "sunset"
+];
+
+const availableFonts = [
+  "Inter", "Roboto", "Outfit", "Playfair Display",
+  "Open Sans", "Lato", "Montserrat", "Poppins",
+  "Nunito", "Raleway", "Ubuntu", "Merriweather",
+  "Noto Sans", "Quicksand", "Oswald"
+];
 
 const Settings = () => {
-  const [activeTab, setActiveTab] = useState('store');
+  const { settings, refreshSettings } = useSettings();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'company' | 'appearance'>('company');
 
-  // Load saved preferences
-  const [storeDetails, setStoreDetails] = useState(() =>
-    JSON.parse(localStorage.getItem('storeDetails') || '{"name":"OICS","phone":"","address":"","enableOnline":true}')
-  );
-  const [notifications, setNotifications] = useState(() =>
-    JSON.parse(localStorage.getItem('notifications') || '{"lowStock":true,"newOrders":true,"ai":true}')
-  );
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'system');
-  const [fontSize, setFontSize] = useState(() => localStorage.getItem('fontSize') || 'normal');
-  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem('fontFamily') || 'sans');
+  // Form State
+  const [companyName, setCompanyName] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [currency, setCurrency] = useState('');
+  const [taxRate, setTaxRate] = useState('');
+  const [theme, setTheme] = useState('');
+  const [font, setFont] = useState('');
 
-  // Apply theme when changed
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') {
-      root.removeAttribute('data-theme');
-      root.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
-    } else {
-      root.setAttribute('data-theme', theme);
-      root.classList.toggle('dark', theme === 'dark');
+    if (settings) {
+      setCompanyName(settings.companyName || '');
+      setLogoUrl(settings.logoUrl || '');
+      setCurrency(settings.currency || '');
+      setTaxRate(settings.taxRate || '0');
+      setTheme(settings.theme || 'light');
+      setFont(settings.font || 'Inter');
     }
-  }, [theme]);
+  }, [settings]);
 
-  // Apply font family when changed
-  useEffect(() => {
-    const root = document.documentElement;
-    if (['sans', 'serif', 'mono'].includes(fontFamily)) {
-      root.style.fontFamily = '';
-      root.classList.remove('font-sans', 'font-serif', 'font-mono');
-      root.classList.add(`font-${fontFamily}`);
-    } else {
-      root.classList.remove('font-sans', 'font-serif', 'font-mono');
-      root.style.fontFamily = fontFamily;
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      await api.put('/settings', payload);
+    },
+    onSuccess: () => {
+      // Force refresh of settings context
+      refreshSettings();
+      queryClient.invalidateQueries({ queryKey: ['globalSettings'] });
+      
+      const toast = document.createElement('div');
+      toast.className = 'toast toast-top toast-end z-[9999]';
+      toast.innerHTML = `<div class="alert alert-success"><span>Settings updated successfully.</span></div>`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
     }
-  }, [fontFamily]);
+  });
 
-  // Apply font size when changed
-  useEffect(() => {
-    const root = document.documentElement;
-    root.style.fontSize = fontSize === 'small' ? '14px' : fontSize === 'large' ? '18px' : '16px';
-  }, [fontSize]);
-
-  const handleThemeChange = (newTheme: string) => {
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateSettingsMutation.mutate({
+      companyName,
+      logoUrl,
+      currency,
+      taxRate: parseFloat(taxRate) || 0,
+      theme,
+      font
+    });
   };
 
-  const handleSaveStore = () => {
-    localStorage.setItem('storeDetails', JSON.stringify(storeDetails));
-    alert('Store details saved!');
+  const handleThemePreview = (previewTheme: string) => {
+    setTheme(previewTheme);
+    document.documentElement.setAttribute('data-theme', previewTheme);
   };
 
-  const handleSaveNotifications = () => {
-    localStorage.setItem('notifications', JSON.stringify(notifications));
-    alert('Notification preferences saved!');
+  const handleFontPreview = (previewFont: string) => {
+    setFont(previewFont);
+    document.body.style.fontFamily = `"${previewFont}", sans-serif`;
   };
 
-  const tabs = [
-    { id: 'store',         label: 'Store Details',   icon: <Store size={18} /> },
-    { id: 'appearance',    label: 'Appearance',      icon: <Palette size={18} /> },
-    { id: 'notifications', label: 'Notifications',   icon: <Bell size={18} /> },
-  ];
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
-    <div className="animate-in fade-in duration-500 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <SettingsIcon size={28} className="text-primary" />
+    <div className="animate-in fade-in duration-500 max-w-4xl mx-auto">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-extrabold text-base-content tracking-tight">Settings</h2>
-          <p className="text-base-content/60 mt-0.5">Manage store configuration and system preferences.</p>
+          <h2 className="text-3xl font-bold text-base-content flex items-center gap-2">
+            ⚙️ Settings
+          </h2>
+          <p className="text-base-content/70 mt-1">Configure global application preferences.</p>
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Tab Navigation */}
-        <div className="w-full md:w-56 shrink-0 space-y-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-                activeTab === tab.id
-                  ? 'bg-primary text-primary-content shadow-md'
-                  : 'text-base-content/70 hover:bg-base-200'
-              }`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
+      <div className="tabs tabs-boxed mb-6 bg-base-200/50 p-1 inline-flex w-full md:w-auto">
+        <a 
+          className={`tab px-6 transition-all ${activeTab === 'company' ? 'tab-active shadow-sm font-bold bg-base-100' : ''}`}
+          onClick={() => setActiveTab('company')}
+        >
+          <Building2 size={16} className="mr-2" />
+          Company Details
+        </a> 
+        <a 
+          className={`tab px-6 transition-all ${activeTab === 'appearance' ? 'tab-active shadow-sm font-bold bg-base-100' : ''}`}
+          onClick={() => setActiveTab('appearance')}
+        >
+          <Palette size={16} className="mr-2" />
+          Appearance
+        </a> 
+      </div>
 
-        {/* Content Area */}
-        <div className="flex-1 bg-base-100 border border-base-200 rounded-2xl shadow-sm overflow-hidden">
-
-          {/* ── STORE DETAILS ─────────────────────────────────────────── */}
-          {activeTab === 'store' && (
-            <div className="p-8 space-y-6">
-              <div>
-                <h3 className="text-lg font-bold text-base-content">Store Details</h3>
-                <p className="text-sm text-base-content/60 mt-1">Configure your store and POS information.</p>
+      <form onSubmit={handleSave} className="bg-base-100 shadow-md rounded-2xl border border-base-200 overflow-hidden">
+        
+        {activeTab === 'company' && (
+          <div className="p-6 space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+            <h3 className="font-bold text-xl border-b border-base-200 pb-2">Business Information</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="form-control">
+                <label className="label font-semibold">Company Name</label>
+                <input 
+                  type="text" 
+                  className="input input-bordered w-full" 
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="e.g. ZuriShop Inc."
+                  required
+                />
               </div>
-              <div className="divider" />
 
-              <div className="space-y-5">
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-semibold">Store Name</span></label>
-                  <input
-                    type="text"
-                    className="input input-bordered"
-                    value={storeDetails.name}
-                    onChange={e => setStoreDetails({ ...storeDetails, name: e.target.value })}
-                  />
-                </div>
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-semibold">Contact Phone Number</span></label>
-                  <input
-                    type="text"
-                    className="input input-bordered"
-                    placeholder="+254700000000"
-                    value={storeDetails.phone}
-                    onChange={e => setStoreDetails({ ...storeDetails, phone: e.target.value })}
-                  />
-                </div>
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-semibold">Store Address</span></label>
-                  <textarea
-                    className="textarea textarea-bordered h-24"
-                    placeholder="Enter full physical address"
-                    value={storeDetails.address}
-                    onChange={e => setStoreDetails({ ...storeDetails, address: e.target.value })}
-                  />
-                </div>
-                <div className="form-control">
-                  <label className="label cursor-pointer justify-start gap-4">
-                    <input
-                      type="checkbox"
-                      className="toggle toggle-primary"
-                      checked={storeDetails.enableOnline}
-                      onChange={e => setStoreDetails({ ...storeDetails, enableOnline: e.target.checked })}
+              <div className="form-control">
+                <label className="label font-semibold flex justify-between">
+                  <span>Logo URL or Upload</span>
+                </label>
+                <div className="flex gap-4">
+                  <div className="flex-1 flex flex-col gap-3">
+                    <input 
+                      type="text" 
+                      className="input input-bordered w-full" 
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="Paste image URL here..."
                     />
-                    <span className="label-text font-medium">Enable Online Storefront (ZuriShop)</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-4">
-                <button className="btn btn-primary gap-2" onClick={handleSaveStore}>
-                  <Save size={16} /> Save Changes
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── APPEARANCE ─────────────────────────────────────────────── */}
-          {activeTab === 'appearance' && (
-            <div className="p-8 space-y-6">
-              <div>
-                <h3 className="text-lg font-bold text-base-content">Appearance</h3>
-                <p className="text-sm text-base-content/60 mt-1">Customize the look and feel of your dashboard.</p>
-              </div>
-              <div className="divider" />
-
-              {/* Theme */}
-              <div className="space-y-4">
-                <h4 className="font-semibold text-sm">Theme Preference</h4>
-                <div className="flex items-center justify-between bg-base-200/50 p-4 rounded-xl border border-base-200">
-                  <div>
-                    <span className="font-semibold text-sm block">Current Theme</span>
-                    <span className="text-xs text-base-content/60 capitalize">
-                      {theme === 'system' ? 'Auto (System Default)' : theme}
-                    </span>
-                  </div>
-                  <details className="dropdown dropdown-end">
-                    <summary className="btn m-1 capitalize">
-                      {theme === 'system' ? 'Select Theme' : theme}
-                      <svg width="12px" height="12px" className="h-2 w-2 fill-current opacity-60 inline-block ml-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048">
-                        <path d="M1799 349l242 241-1017 1017L7 590l242-241 775 775 775-775z" />
-                      </svg>
-                    </summary>
-                    <ul className="dropdown-content bg-base-100 border border-base-200 rounded-box z-[1] w-64 p-2 shadow-2xl h-80 overflow-y-auto">
-                      {['system','light','dark','cupcake','bumblebee','emerald','corporate','synthwave','retro','cyberpunk','valentine','halloween','garden','forest','aqua','lofi','pastel','fantasy','wireframe','black','luxury','dracula','cmyk','autumn','business','acid','lemonade','night','coffee','winter','dim','nord','sunset'].map(t => (
-                        <li key={t}>
-                          <button
-                            className={`flex justify-between items-center w-full px-4 py-3 hover:bg-base-200 transition-colors rounded-lg ${theme === t ? 'bg-primary/10 text-primary font-bold' : ''}`}
-                            onClick={() => { handleThemeChange(t); (document.activeElement as HTMLElement)?.blur(); }}
-                            data-theme={t === 'system' ? 'light' : t}
-                          >
-                            <span className="capitalize">{t}</span>
-                            <div className="flex gap-1">
-                              <span className="bg-primary w-2.5 h-4 rounded-sm shadow-sm" />
-                              <span className="bg-secondary w-2.5 h-4 rounded-sm shadow-sm" />
-                              <span className="bg-accent w-2.5 h-4 rounded-sm shadow-sm" />
-                              <span className="bg-neutral w-2.5 h-4 rounded-sm shadow-sm" />
-                            </div>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                </div>
-              </div>
-
-              {/* Typography */}
-              <div className="space-y-4 pt-6 border-t border-base-200">
-                <h4 className="font-semibold text-sm">Typography</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="form-control">
-                    <label className="label"><span className="label-text font-semibold">Font Family</span></label>
-                    <select className="select select-bordered w-full" value={fontFamily}
-                      onChange={e => { setFontFamily(e.target.value); localStorage.setItem('fontFamily', e.target.value); }}>
-                      <optgroup label="System">
-                        <option value="sans">System Default (Sans-Serif)</option>
-                        <option value="serif">System Serif</option>
-                        <option value="mono">System Monospace</option>
-                      </optgroup>
-                      <optgroup label="Web Safe">
-                        <option value="Arial, sans-serif">Arial</option>
-                        <option value="Helvetica, sans-serif">Helvetica</option>
-                        <option value="'Times New Roman', serif">Times New Roman</option>
-                        <option value="Georgia, serif">Georgia</option>
-                        <option value="Verdana, sans-serif">Verdana</option>
-                        <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
-                      </optgroup>
-                    </select>
-                  </div>
-                  <div className="form-control">
-                    <label className="label"><span className="label-text font-semibold">UI Scale / Font Size</span></label>
-                    <select className="select select-bordered w-full" value={fontSize}
-                      onChange={e => { setFontSize(e.target.value); localStorage.setItem('fontSize', e.target.value); }}>
-                      <option value="small">Small (Compact)</option>
-                      <option value="normal">Normal (Default)</option>
-                      <option value="large">Large (Accessible)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── NOTIFICATIONS ──────────────────────────────────────────── */}
-          {activeTab === 'notifications' && (
-            <div className="p-8 space-y-6">
-              <div>
-                <h3 className="text-lg font-bold text-base-content">Notification Preferences</h3>
-                <p className="text-sm text-base-content/60 mt-1">Choose which alerts you want to receive.</p>
-              </div>
-              <div className="divider" />
-
-              <div className="space-y-4">
-                {[
-                  { key: 'lowStock',  title: 'Low Stock Alerts',                  desc: 'Get notified when items drop below their reorder threshold.' },
-                  { key: 'newOrders', title: 'New Orders (ZuriShop)',              desc: 'Receive an alert when a customer places an order online.' },
-                  { key: 'ai',        title: 'AI Procurement Recommendations',    desc: 'Daily digest of stock forecasting and price adjustments.' },
-                ].map(({ key, title, desc }) => (
-                  <div key={key} className="flex items-center justify-between p-4 border border-base-200 rounded-xl">
-                    <div>
-                      <h4 className="font-bold text-sm">{title}</h4>
-                      <p className="text-xs text-base-content/60 mt-0.5">{desc}</p>
+                    <div className="divider my-0 text-xs opacity-50">OR</div>
+                    <div className="relative">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        className="file-input file-input-bordered file-input-primary w-full" 
+                        onChange={handleImageUpload}
+                      />
                     </div>
-                    <input
-                      type="checkbox"
-                      className="toggle toggle-primary"
-                      checked={notifications[key]}
-                      onChange={e => setNotifications({ ...notifications, [key]: e.target.checked })}
-                    />
                   </div>
-                ))}
+                  {logoUrl && (
+                    <div className="avatar">
+                      <div className="w-24 h-24 rounded-lg bg-base-200 border border-base-300 p-2">
+                        <img src={logoUrl} alt="Logo preview" className="object-contain" />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex justify-end pt-4">
-                <button className="btn btn-primary gap-2" onClick={handleSaveNotifications}>
-                  <Save size={18} /> Save Preferences
-                </button>
+              <div className="form-control">
+                <label className="label font-semibold">Currency Code/Symbol</label>
+                <input 
+                  type="text" 
+                  className="input input-bordered w-full" 
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  placeholder="e.g. KSh or $"
+                  required
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label font-semibold">Default Tax Rate (%)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  className="input input-bordered w-full" 
+                  value={taxRate}
+                  onChange={(e) => setTaxRate(e.target.value)}
+                  placeholder="e.g. 16.00"
+                  required
+                />
               </div>
             </div>
-          )}
+          </div>
+        )}
 
+        {activeTab === 'appearance' && (
+          <div className="p-6 space-y-8 animate-in slide-in-from-bottom-2 duration-300">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Fonts */}
+              <div className="form-control w-full">
+                <label className="label">
+                  <span className="label-text font-bold text-lg">Typography</span>
+                </label>
+                <select 
+                  className="select select-bordered w-full bg-base-200"
+                  value={font}
+                  onChange={(e) => handleFontPreview(e.target.value)}
+                  style={{ fontFamily: `"${font}", sans-serif` }}
+                >
+                  {availableFonts.map(f => (
+                    <option key={f} value={f} style={{ fontFamily: `"${f}", sans-serif` }}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+                <label className="label">
+                  <span className="label-text-alt opacity-70">Changes the global font family</span>
+                </label>
+              </div>
+
+              {/* Themes */}
+              <div className="form-control w-full">
+                <label className="label">
+                  <span className="label-text font-bold text-lg">UI Theme</span>
+                  <span className="badge badge-primary">{theme}</span>
+                </label>
+                <select 
+                  className="select select-bordered w-full capitalize bg-base-200"
+                  value={theme}
+                  onChange={(e) => handleThemePreview(e.target.value)}
+                >
+                  {availableThemes.map(t => (
+                    <option key={t} value={t} className="capitalize">
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <label className="label">
+                  <span className="label-text-alt opacity-70">Changes the global color palette</span>
+                </label>
+              </div>
+            </div>
+            
+          </div>
+        )}
+
+        <div className="bg-base-200/50 p-4 border-t border-base-200 flex justify-end">
+          <button 
+            type="submit" 
+            className="btn btn-primary px-8 shadow-lg shadow-primary/20"
+            disabled={updateSettingsMutation.isPending}
+          >
+            {updateSettingsMutation.isPending ? (
+              <span className="loading loading-spinner loading-sm"></span>
+            ) : (
+              <Save size={18} className="mr-2" />
+            )}
+            Save Configuration
+          </button>
         </div>
-      </div>
+      </form>
+
     </div>
   );
 };

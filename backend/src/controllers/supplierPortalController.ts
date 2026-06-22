@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { db } from "../db";
-import { purchases, supplierBids, goods } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { purchases, supplierBids, goods, supplierDocuments, supplierNotifications, suppliers } from "../db/schema";
+import { eq, count } from "drizzle-orm";
 
 export const getSupplierOrders = async (req: Request, res: Response) => {
   try {
@@ -26,9 +26,9 @@ export const getSupplierOrders = async (req: Request, res: Response) => {
 export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
     const orderId = req.params.orderId as string;
-    const { status } = req.body; // 'shipped' or 'completed'
+    const { status } = req.body; // 'accepted', 'rejected', 'shipped', or 'completed'
     
-    if (!['shipped', 'completed'].includes(status)) {
+    if (!['accepted', 'rejected', 'shipped', 'completed'].includes(status)) {
        res.status(400).json({ error: "Invalid status update" });
        return;
     }
@@ -105,6 +105,153 @@ export const submitSupplierBid = async (req: Request, res: Response) => {
       .returning();
       
     res.json(updatedBid);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getDashboardStats = async (req: Request, res: Response) => {
+  try {
+    const supplierId = req.params.supplierId as string;
+    
+    const allOrders = await db.query.purchases.findMany({
+      where: eq(purchases.supplierId, supplierId)
+    });
+    
+    const allBids = await db.query.supplierBids.findMany({
+      where: eq(supplierBids.supplierId, supplierId)
+    });
+    
+    const unreadNotifications = await db.query.supplierNotifications.findMany({
+      where: eq(supplierNotifications.supplierId, supplierId)
+    });
+
+    const stats = {
+      activeOrders: allOrders.filter((o: any) => o.status === 'pending').length,
+      acceptedOrders: allOrders.filter((o: any) => o.status === 'accepted').length,
+      shippedOrders: allOrders.filter((o: any) => o.status === 'shipped').length,
+      completedOrders: allOrders.filter((o: any) => o.status === 'completed').length,
+      pendingBids: allBids.filter((b: any) => b.status === 'pending').length,
+      unreadNotificationsCount: unreadNotifications.filter((n: any) => !n.isRead).length
+    };
+    
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getSupplierGoods = async (req: Request, res: Response) => {
+  try {
+    const supplierId = req.params.supplierId as string;
+    const items = await db.query.goods.findMany({
+      where: eq(goods.supplierId, supplierId),
+      with: { subCategory: true }
+    });
+    res.json(items);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateGoodPrice = async (req: Request, res: Response) => {
+  try {
+    const goodId = req.params.goodId as string;
+    const { buyRate } = req.body;
+    
+    const [updatedGood] = await db.update(goods)
+      .set({ buyRate: buyRate.toString() })
+      .where(eq(goods.id, goodId))
+      .returning();
+      
+    res.json(updatedGood);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getSupplierNotifications = async (req: Request, res: Response) => {
+  try {
+    const supplierId = req.params.supplierId as string;
+    const notifs = await db.query.supplierNotifications.findMany({
+      where: eq(supplierNotifications.supplierId, supplierId),
+      orderBy: (fields: any, { desc }: any) => [desc(fields.createdAt)]
+    });
+    res.json(notifs);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const markNotificationRead = async (req: Request, res: Response) => {
+  try {
+    const notifId = req.params.notifId as string;
+    await db.update(supplierNotifications)
+      .set({ isRead: true })
+      .where(eq(supplierNotifications.id, notifId));
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getSupplierDocuments = async (req: Request, res: Response) => {
+  try {
+    const supplierId = req.params.supplierId as string;
+    const docs = await db.query.supplierDocuments.findMany({
+      where: eq(supplierDocuments.supplierId, supplierId),
+      orderBy: (fields: any, { desc }: any) => [desc(fields.createdAt)]
+    });
+    res.json(docs);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const uploadDocument = async (req: Request, res: Response) => {
+  try {
+    const supplierId = req.params.supplierId as string;
+    const { title, type, fileUrl, purchaseId } = req.body;
+    
+    const [newDoc] = await db.insert(supplierDocuments).values({
+      supplierId,
+      title,
+      type,
+      fileUrl,
+      purchaseId: purchaseId || null,
+    }).returning();
+    
+    res.json(newDoc);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateSupplierProfile = async (req: Request, res: Response) => {
+  try {
+    const supplierId = req.params.supplierId as string;
+    const { name, email, phone, address } = req.body;
+    
+    const [updatedSupplier] = await db.update(suppliers)
+      .set({ name, email, phone, address })
+      .where(eq(suppliers.id, supplierId))
+      .returning();
+      
+    res.json(updatedSupplier);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const registerSupplier = async (req: Request, res: Response) => {
+  try {
+    const { name, email, phone, address } = req.body;
+    
+    const [newSupplier] = await db.insert(suppliers).values({
+      name, email, phone, address
+    }).returning();
+    
+    res.status(201).json(newSupplier);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

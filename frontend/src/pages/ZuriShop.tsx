@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { ShoppingBag, Search, Plus, Minus, Trash2, ShieldCheck, HelpCircle, Heart, Star, Sparkles, CreditCard } from 'lucide-react';
+import { ShoppingBag, Search, Plus, Minus, Trash2, ShieldCheck, HelpCircle, Heart, Star, Sparkles, CreditCard, Truck, CheckCircle, Package, Hourglass } from 'lucide-react';
+
+const ORDER_STATUSES = ['Pending', 'Paid', 'Processing', 'Packed', 'Shipped', 'Delivered'];
+
+const STATUS_ICONS: Record<string, any> = {
+  Pending: <Hourglass size={18} className="text-warning" />,
+  Paid: <CheckCircle size={18} className="text-success" />,
+  Processing: <Package size={18} className="text-info" />,
+  Packed: <Package size={18} className="text-indigo-400" />,
+  Shipped: <Truck size={18} className="text-purple-400" />,
+  Delivered: <CheckCircle size={18} className="text-success" />,
+};
 
 interface CartItem {
   goodId: string;
@@ -28,12 +39,28 @@ const ZuriShop = () => {
   const [stkPushRequestId, setStkPushRequestId] = useState<string | null>(null);
   const [lastPayload, setLastPayload] = useState<any>(null);
 
+  // Tracking States
+  const [isTrackModalOpen, setIsTrackModalOpen] = useState(false);
+  const [trackingId, setTrackingId] = useState('');
+  const [trackedOrder, setTrackedOrder] = useState<any>(null);
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackError, setTrackError] = useState('');
+
   useEffect(() => {
     const eventSource = new EventSource('http://localhost:5000/api/stream');
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (['STOCK_UPDATED', 'PRICE_UPDATED'].includes(data.type)) {
         queryClient.invalidateQueries({ queryKey: ['goods'] });
+      }
+      if (data.type === 'ORDER_STATUS_UPDATED') {
+        // Live update the tracking modal if it's currently open for this order
+        setTrackedOrder((prev: any) => {
+          if (prev && prev.id === data.payload.saleId) {
+            return { ...prev, orderStatus: data.payload.orderStatus };
+          }
+          return prev;
+        });
       }
       if (data.type === 'STK_PUSH_SUCCESS' && isWaitingForMpesa) {
         if (lastPayload) checkoutMutation.mutate(lastPayload);
@@ -62,8 +89,20 @@ const ZuriShop = () => {
       return res.data;
     },
     onSuccess: (data) => {
+      // Save order to localStorage for tracking
+      try {
+        const saved = JSON.parse(localStorage.getItem('zuri_saved_orders') || '[]');
+        if (!saved.some((o: any) => o.id === data.id)) {
+          saved.push({ id: data.id, date: new Date().toISOString() });
+          localStorage.setItem('zuri_saved_orders', JSON.stringify(saved));
+        }
+      } catch (e) {
+        console.error('Could not save to localStorage', e);
+      }
+
       queryClient.invalidateQueries({ queryKey: ['goods'] });
       queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['insights'] });
       setOrderId(data.id);
@@ -72,6 +111,19 @@ const ZuriShop = () => {
       setCustomerName('');
       setIsWaitingForMpesa(false);
       setStkPushRequestId(null);
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
+      await api.post(`/ai/orders/${orderId}/status`, { orderStatus: status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      if (trackingId) {
+        handleTrackOrder(undefined, trackingId);
+      }
     },
   });
 
@@ -188,6 +240,25 @@ const ZuriShop = () => {
     }
   };
 
+  const handleTrackOrder = async (e?: React.FormEvent, directId?: string) => {
+    if (e) e.preventDefault();
+    const idToTrack = directId || trackingId.trim();
+    if (!idToTrack) return;
+    
+    setTrackingId(idToTrack); // sync the input visually
+    setIsTracking(true);
+    setTrackError('');
+    setTrackedOrder(null);
+    try {
+      const res = await api.get(`/sales/${idToTrack}`);
+      setTrackedOrder(res.data);
+    } catch (err: any) {
+      setTrackError(err.response?.data?.error || 'Order not found. Please check your Order ID.');
+    } finally {
+      setIsTracking(false);
+    }
+  };
+
   const filteredGoods = goods.filter((good: any) =>
     (good.name || good.subCategory?.name || 'Product').toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -208,6 +279,10 @@ const ZuriShop = () => {
             <p className="text-base-content/75 text-sm md:text-base leading-relaxed">
               Browse our high-quality inventory. Place an order online and track fulfillment pipeline stages dynamically.
             </p>
+            <button className="btn btn-primary shadow-md mt-2" onClick={() => { setIsTrackModalOpen(true); setTrackedOrder(null); setTrackingId(''); setTrackError(''); }}>
+              <Truck size={18} />
+              Track My Order
+            </button>
           </div>
         </div>
       </div>
@@ -536,6 +611,104 @@ const ZuriShop = () => {
                     >
                       <ShoppingBag size={14} /> Add to Cart
                     </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Tracking Modal */}
+            {isTrackModalOpen && (
+              <div className="modal modal-open">
+                <div className="modal-box rounded-2xl max-w-md border border-base-200 shadow-xl space-y-4">
+                  <h3 className="font-bold text-lg flex items-center gap-2">
+                    <Truck className="text-primary" />
+                    <span>Track Your Order</span>
+                  </h3>
+                  
+                  <form onSubmit={handleTrackOrder} className="flex gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="Enter Order ID..." 
+                      className="input input-bordered w-full"
+                      value={trackingId}
+                      onChange={(e) => setTrackingId(e.target.value)}
+                      required
+                    />
+                    <button type="submit" className="btn btn-primary" disabled={isTracking}>
+                      {isTracking ? <span className="loading loading-spinner loading-xs"></span> : <Search size={18} />}
+                    </button>
+                  </form>
+
+                  {/* Recent Orders List (from localStorage) */}
+                  {(!trackedOrder && !isTracking && !trackError) && (() => {
+                    try {
+                      const saved = JSON.parse(localStorage.getItem('zuri_saved_orders') || '[]');
+                      if (saved.length > 0) {
+                        return (
+                          <div className="mt-6 space-y-2">
+                            <h4 className="text-xs font-bold text-base-content/50 uppercase tracking-widest border-b border-base-200 pb-2">Recent Orders on this Device</h4>
+                            <div className="flex flex-col gap-2 pt-2">
+                              {saved.slice().reverse().slice(0, 3).map((so: any) => (
+                                <button 
+                                  key={so.id}
+                                  type="button"
+                                  className="btn btn-sm btn-outline btn-ghost justify-start text-left border border-base-200 shadow-sm"
+                                  onClick={() => handleTrackOrder(undefined, so.id)}
+                                >
+                                  <Package size={14} className="text-primary opacity-70" /> 
+                                  <span className="font-mono font-semibold">#{so.id.slice(0, 8).toUpperCase()}</span>
+                                  <span className="text-[10px] text-base-content/40 font-normal ml-auto">
+                                    {new Date(so.date).toLocaleDateString()}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                    } catch (e) {
+                      return null;
+                    }
+                    return null;
+                  })()}
+
+                  {trackError && <div className="text-error text-sm font-semibold">{trackError}</div>}
+
+                  {trackedOrder && (
+                    <div className="mt-6 border border-base-200 rounded-xl p-4 bg-base-200/20">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="font-mono text-sm font-bold text-primary">#{trackedOrder.id.slice(0,8).toUpperCase()}</span>
+                        <span className="badge badge-primary font-bold">{(trackedOrder.orderStatus || 'Pending').charAt(0).toUpperCase() + (trackedOrder.orderStatus || 'Pending').slice(1)}</span>
+                      </div>
+                      
+                      <ul className="steps steps-vertical w-full text-sm mt-2">
+                        {ORDER_STATUSES.map((status, index) => {
+                          const rawStatus = trackedOrder.orderStatus || 'Pending';
+                          const normalizedDbStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+                          const currentStatusIndex = ORDER_STATUSES.indexOf(normalizedDbStatus);
+                          const isCompleted = index <= currentStatusIndex;
+                          return (
+                            <li 
+                              key={status} 
+                              className={`step ${isCompleted ? 'step-primary' : ''} text-left flex gap-3`}
+                            >
+                              <span className="font-semibold text-base-content flex items-center gap-2">
+                                {STATUS_ICONS[status]}
+                                {status}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      
+                      <div className="mt-4 pt-4 border-t border-base-200">
+                        <div className="text-xs text-base-content/60">Total Paid</div>
+                        <div className="text-lg font-black text-primary">KSh {parseFloat(trackedOrder.totalAmount).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="modal-action">
+                    <button type="button" className="btn btn-ghost" onClick={() => setIsTrackModalOpen(false)}>Close</button>
                   </div>
                 </div>
               </div>
