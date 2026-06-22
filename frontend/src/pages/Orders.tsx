@@ -166,8 +166,8 @@ const Orders = () => {
                             </span>
                           </td>
                           <td>
-                            <span className={`badge badge-sm font-medium ${STATUS_BADGES[order.orderStatus] || 'badge-ghost'}`}>
-                              {order.orderStatus}
+                            <span className={`badge badge-sm font-medium ${STATUS_BADGES[(order.orderStatus || 'Pending').charAt(0).toUpperCase() + (order.orderStatus || 'Pending').slice(1)] || 'badge-ghost'}`}>
+                              {(order.orderStatus || 'Pending').charAt(0).toUpperCase() + (order.orderStatus || 'Pending').slice(1)}
                             </span>
                           </td>
                           <td>
@@ -204,8 +204,8 @@ const Orders = () => {
                       <span>{new Date(selectedOrder.createdAt).toLocaleString()}</span>
                     </div>
                   </div>
-                  <span className={`badge font-bold ${STATUS_BADGES[selectedOrder.orderStatus] || 'badge-ghost'}`}>
-                    {selectedOrder.orderStatus}
+                  <span className={`badge font-bold ${STATUS_BADGES[(selectedOrder.orderStatus || 'Pending').charAt(0).toUpperCase() + (selectedOrder.orderStatus || 'Pending').slice(1)] || 'badge-ghost'}`}>
+                    {(selectedOrder.orderStatus || 'Pending').charAt(0).toUpperCase() + (selectedOrder.orderStatus || 'Pending').slice(1)}
                   </span>
                 </div>
 
@@ -214,7 +214,9 @@ const Orders = () => {
                   <h4 className="text-sm font-bold text-base-content/70 uppercase tracking-wider">Delivery Tracker</h4>
                   <ul className="steps steps-vertical w-full text-sm">
                     {ORDER_STATUSES.map((status, index) => {
-                      const currentStatusIndex = ORDER_STATUSES.indexOf(selectedOrder.orderStatus);
+                      const rawStatus = selectedOrder.orderStatus || 'Pending';
+                      const normalizedDbStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+                      const currentStatusIndex = ORDER_STATUSES.indexOf(normalizedDbStatus);
                       const isCompleted = index <= currentStatusIndex;
                       return (
                         <li 
@@ -235,16 +237,20 @@ const Orders = () => {
                 <div className="border-t border-base-200 pt-4 space-y-2">
                   <h4 className="text-xs font-bold text-base-content/70 uppercase tracking-wider mb-2">Transition Order Status</h4>
                   <div className="flex flex-wrap gap-2">
-                    {ORDER_STATUSES.map((status) => (
+                    {ORDER_STATUSES.map((status) => {
+                      const rawStatus = selectedOrder.orderStatus || 'Pending';
+                      const normalizedDbStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+                      return (
                       <button
                         key={status}
-                        className={`btn btn-xs ${selectedOrder.orderStatus === status ? 'btn-primary' : 'btn-outline'}`}
+                        className={`btn btn-xs ${normalizedDbStatus === status ? 'btn-primary' : 'btn-outline'}`}
                         disabled={updateStatusMutation.isPending}
                         onClick={() => updateStatusMutation.mutate({ orderId: selectedOrder.id, status })}
                       >
                         {status}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

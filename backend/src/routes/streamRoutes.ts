@@ -22,6 +22,7 @@ router.get("/", (req: Request, res: Response) => {
   const handleStkPushSuccess = onEvent("STK_PUSH_SUCCESS");
   const handleStkPushFailed = onEvent("STK_PUSH_FAILED");
   const handleMpesaPayment = onEvent("MPESA_PAYMENT_RECEIVED");
+  const handleOrderStatusUpdated = onEvent("ORDER_STATUS_UPDATED");
 
   eventBus.on("STOCK_UPDATED", handleStockUpdated);
   eventBus.on("LOW_STOCK_DETECTED", handleLowStock);
@@ -29,6 +30,7 @@ router.get("/", (req: Request, res: Response) => {
   eventBus.on("STK_PUSH_SUCCESS", handleStkPushSuccess);
   eventBus.on("STK_PUSH_FAILED", handleStkPushFailed);
   eventBus.on("MPESA_PAYMENT_RECEIVED", handleMpesaPayment);
+  eventBus.on("ORDER_STATUS_UPDATED", handleOrderStatusUpdated);
 
   // Keep alive ping every 15s to prevent timeouts
   const keepAlive = setInterval(() => {
@@ -43,6 +45,7 @@ router.get("/", (req: Request, res: Response) => {
     eventBus.off("STK_PUSH_SUCCESS", handleStkPushSuccess);
     eventBus.off("STK_PUSH_FAILED", handleStkPushFailed);
     eventBus.off("MPESA_PAYMENT_RECEIVED", handleMpesaPayment);
+    eventBus.off("ORDER_STATUS_UPDATED", handleOrderStatusUpdated);
   });
 });
 

@@ -252,6 +252,12 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       status: "unread",
     });
 
+    // Broadcast the live update for the customer tracking view
+    await eventBus.publish("ORDER_STATUS_UPDATED", "orders", {
+      saleId: id,
+      orderStatus
+    });
+
     res.json(updatedSale);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
