@@ -1,0 +1,33 @@
+/* src/styles/designTokens.css */
+:root {
+  /* Color palette */
+  --color-primary: hsl(210, 55%, 55%); /* a vibrant blue */
+  --color-primary-dark: hsl(210, 55%, 45%);
+  --color-secondary: hsl(340, 65%, 55%); /* accent pink */
+  --color-background: hsl(210, 20%, 12%); /* dark background */
+  --color-surface: hsl(210, 20%, 18%); /* cards surface */
+  --color-text: hsl(0, 0%, 95%);
+  --color-muted: hsl(0, 0%, 60%);
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 2rem;
+  /* Border radius */
+  --radius-sm: 0.4rem;
+  --radius-md: 0.8rem;
+  --radius-lg: 1.2rem;
+  /* Shadow */
+  --shadow-glass: rgba(0, 0, 0, 0.2) 0 4px 30px;
+  /* Font */
+  --font-family: 'Inter', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: hsl(210, 20%, 12%);
+    --color-surface: hsl(210, 20%, 18%);
+    --color-text: hsl(0, 0%, 95%);
+    --color-muted: hsl(0, 0%, 60%);
+  }
+}

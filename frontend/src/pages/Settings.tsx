@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSettings } from '../context/SettingsContext';
@@ -268,6 +269,7 @@ const Settings = () => {
           </button>
         </div>
       </form>
+
     </div>
   );
 };
