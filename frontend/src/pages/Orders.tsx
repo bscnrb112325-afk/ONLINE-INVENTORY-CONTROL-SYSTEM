@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck } from 'lucide-react';
+import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck, Lock } from 'lucide-react';
+import { UserHeader } from '../components/UserHeader';
 
 const ORDER_STATUSES = ['Pending', 'Paid', 'Processing', 'Packed', 'Shipped', 'Delivered'];
 
@@ -29,6 +30,41 @@ const Orders = () => {
   const [activeTab, setActiveTab] = useState<'sales' | 'purchases'>('sales');
   const [receivingPurchase, setReceivingPurchase] = useState<any | null>(null);
   const [verifiedQty, setVerifiedQty] = useState<number>(0);
+
+  // Lock Screen
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<any>(null);
+  const [userName, setUserName] = useState('');
+  const [password, setPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUnlockError('');
+    setIsUnlocking(true);
+    try {
+      const res = await api.post('/users/verify-pos', {
+        name: userName,
+        password: password
+      });
+      if (res.data.success) {
+        const userRole = res.data.user.role;
+        if (userRole === 'admin' || userRole === 'manager') {
+          setIsUnlocked(true);
+          setLoggedInUser(res.data.user);
+        } else {
+          setUnlockError('Access Denied: Only Manager and Admin can access Orders.');
+        }
+      }
+    } catch (err: any) {
+      setUnlockError('Incorrect username or password.');
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
 
   // Fetch orders from API
   const { data: orders = [], isLoading } = useQuery({
@@ -82,8 +118,84 @@ const Orders = () => {
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
   const selectedPurchase = purchasesList.find((p: any) => p.id === selectedPurchaseId);
 
+  if (!isUnlocked) {
+    return (
+      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
+        <div className="card w-96 bg-base-100 shadow-2xl border border-base-200">
+          <div className="card-body">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                <Lock size={32} />
+              </div>
+            </div>
+            <h2 className="card-title text-center block text-2xl mb-1">Orders Pipeline Locked</h2>
+            <p className="text-center text-base-content/60 text-sm mb-6">To login to Orders Pipeline use details on settings User Management.</p>
+            
+            <form onSubmit={handleUnlock} className="space-y-4">
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Username</span></label>
+                <input 
+                  type="text" 
+                  className="input input-bordered w-full" 
+                  placeholder="e.g. Admin" 
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Password</span></label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    className="input input-bordered w-full pr-10" 
+                    placeholder="••••••••" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button 
+                    type="button"
+                    className="absolute inset-y-0 right-3 flex items-center text-base-content/50 hover:text-base-content"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              
+              {unlockError && (
+                <div className="alert alert-error text-sm p-3 rounded-lg">
+                  {unlockError}
+                </div>
+              )}
+              
+              <button 
+                type="submit" 
+                className="btn btn-primary w-full mt-4"
+                disabled={isUnlocking || !userName || !password}
+              >
+                {isUnlocking ? <span className="loading loading-spinner loading-sm"></span> : 'Unlock Orders'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
+      {loggedInUser && (
+        <UserHeader 
+          user={loggedInUser} 
+          onLogout={() => {
+            setIsUnlocked(false);
+            setLoggedInUser(null);
+            setPassword('');
+          }} 
+        />
+      )}
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

@@ -1,12 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { Building2, PackageCheck, Send, Info, LayoutDashboard, ShoppingCart, Truck, Tag, FileText, Bell, UserCircle, Plus } from 'lucide-react';
+import { Building2, PackageCheck, Send, Info, LayoutDashboard, ShoppingCart, Truck, Tag, FileText, Bell, UserCircle, Plus, Lock, Eye, EyeOff } from 'lucide-react';
+import { UserHeader } from '../components/UserHeader';
 
 const SupplierPortal = () => {
   const queryClient = useQueryClient();
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'deliveries' | 'bids' | 'pricing' | 'documents' | 'profile' | 'notifications'>('dashboard');
+
+  // Lock Screen
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<any>(null);
+  const [userName, setUserName] = useState('');
+  const [password, setPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUnlockError('');
+    setIsUnlocking(true);
+    try {
+      const res = await api.post('/users/verify-pos', {
+        name: userName,
+        password: password
+      });
+      if (res.data.success) {
+        const userRole = res.data.user.role;
+        if (userRole === 'supplier') {
+          setIsUnlocked(true);
+          setLoggedInUser(res.data.user);
+        } else {
+          setUnlockError('Access Denied: Only Suppliers can access the Supplier Portal.');
+        }
+      }
+    } catch (err: any) {
+      setUnlockError('Incorrect supplier name or password.');
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
 
   // Fetch all suppliers for the simulator dropdown
   const { data: suppliers = [], isLoading: loadingSuppliers } = useQuery({
@@ -16,6 +52,20 @@ const SupplierPortal = () => {
       return res.data;
     },
   });
+
+  // Auto-select supplier for logged-in users with the 'supplier' role
+  useEffect(() => {
+    if (loggedInUser && loggedInUser.role === 'supplier' && suppliers.length > 0) {
+      // Try to match by name or email
+      const matchedSupplier = suppliers.find((s: any) => 
+        s.name.toLowerCase() === loggedInUser.name?.toLowerCase() || 
+        (s.email && loggedInUser.email && s.email.toLowerCase() === loggedInUser.email.toLowerCase())
+      );
+      if (matchedSupplier && selectedSupplierId !== matchedSupplier.id) {
+        setSelectedSupplierId(matchedSupplier.id);
+      }
+    }
+  }, [loggedInUser, suppliers]);
 
   // Queries for selected supplier
   const { data: dashboardStats = {} } = useQuery({
@@ -168,8 +218,84 @@ const SupplierPortal = () => {
 
   const selectedSupplier = suppliers.find((s: any) => s.id === selectedSupplierId);
 
+  if (!isUnlocked) {
+    return (
+      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
+        <div className="card w-96 bg-base-100 shadow-2xl border border-base-200">
+          <div className="card-body">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                <Lock size={32} />
+              </div>
+            </div>
+            <h2 className="card-title text-center block text-2xl mb-1">Supplier Portal Locked</h2>
+            <p className="text-center text-base-content/60 text-sm mb-6">To login to supplier portal use details on settings User Management.</p>
+            
+            <form onSubmit={handleUnlock} className="space-y-4">
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Username</span></label>
+                <input 
+                  type="text" 
+                  className="input input-bordered w-full" 
+                  placeholder="e.g. Admin" 
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Password</span></label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    className="input input-bordered w-full pr-10" 
+                    placeholder="••••••••" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button 
+                    type="button"
+                    className="absolute inset-y-0 right-3 flex items-center text-base-content/50 hover:text-base-content"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              
+              {unlockError && (
+                <div className="alert alert-error text-sm p-3 rounded-lg">
+                  {unlockError}
+                </div>
+              )}
+              
+              <button 
+                type="submit" 
+                className="btn btn-primary w-full mt-4"
+                disabled={isUnlocking || !userName || !password}
+              >
+                {isUnlocking ? <span className="loading loading-spinner loading-sm"></span> : 'Unlock Portal'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      {loggedInUser && (
+        <UserHeader 
+          user={loggedInUser} 
+          onLogout={() => {
+            setIsUnlocked(false);
+            setLoggedInUser(null);
+            setPassword('');
+          }} 
+        />
+      )}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-base-100 p-6 rounded-2xl shadow-sm border border-base-200">
         <div>
           <h1 className="text-3xl font-black text-base-content flex items-center gap-3">
@@ -177,22 +303,6 @@ const SupplierPortal = () => {
             Supplier Portal
           </h1>
           <p className="text-base-content/60 mt-1">Manage orders, update pricing, and track deliveries.</p>
-        </div>
-        
-        <div className="bg-warning/10 p-4 rounded-xl border border-warning/20 w-full md:w-auto">
-          <label className="label py-0 pb-1 font-bold text-xs text-warning-content/80 flex items-center gap-1 uppercase tracking-wider">
-            <Info size={14} /> Simulate Login
-          </label>
-          <select 
-            className="select select-bordered w-full md:w-64 bg-base-100"
-            value={selectedSupplierId}
-            onChange={(e) => setSelectedSupplierId(e.target.value)}
-          >
-            <option value="" disabled>Select your company...</option>
-            {suppliers.map((s: any) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -203,16 +313,20 @@ const SupplierPortal = () => {
               <div className="max-w-md">
                 <Building2 className="mx-auto text-base-content/20 mb-4" size={64} />
                 <h1 className="text-2xl font-bold">Welcome to the Portal</h1>
-                <p className="py-4 text-base-content/60">Please select a supplier identity from the dropdown above to view your portal.</p>
+                <p className="py-4 text-base-content/60">
+                  {loggedInUser?.role === 'supplier' 
+                    ? "It looks like your company profile hasn't been set up yet. Please register your details to get started." 
+                    : "Please select a supplier identity from the dropdown above to view your portal."}
+                </p>
               </div>
             </div>
           </div>
           <div className="bg-base-100 p-6 rounded-2xl shadow-sm border border-base-200">
              <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Plus className="text-success" /> Register New Supplier</h2>
              <form onSubmit={handleRegisterSupplier} className="space-y-4">
-                <input type="text" name="name" className="input input-bordered w-full" placeholder="Company Name" required />
-                <input type="email" name="email" className="input input-bordered w-full" placeholder="Email Address" />
-                <input type="text" name="phone" className="input input-bordered w-full" placeholder="Phone Number" />
+                <input type="text" name="name" className="input input-bordered w-full" placeholder="Company Name" defaultValue={loggedInUser?.role === 'supplier' ? loggedInUser.name : ''} required />
+                <input type="email" name="email" className="input input-bordered w-full" placeholder="Email Address" defaultValue={loggedInUser?.role === 'supplier' ? loggedInUser.email : ''} />
+                <input type="text" name="phone" className="input input-bordered w-full" placeholder="Phone Number" defaultValue={loggedInUser?.role === 'supplier' ? loggedInUser.phone : ''} />
                 <textarea name="address" className="textarea textarea-bordered w-full" placeholder="Physical Address" />
                 <button type="submit" className="btn btn-success w-full" disabled={registerSupplierMutation.isPending}>
                   {registerSupplierMutation.isPending ? 'Registering...' : 'Register as Supplier'}
