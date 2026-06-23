@@ -47,7 +47,8 @@ const ZuriShop = () => {
   const [trackError, setTrackError] = useState('');
 
   useEffect(() => {
-    const eventSource = new EventSource('http://localhost:5000/api/stream');
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const eventSource = new EventSource(`${apiUrl}/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (['STOCK_UPDATED', 'PRICE_UPDATED'].includes(data.type)) {

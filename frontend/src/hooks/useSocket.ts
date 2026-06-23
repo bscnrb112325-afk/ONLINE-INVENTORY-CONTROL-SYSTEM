@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 
 // Create a single shared socket instance
 // @ts-ignore
-const socket: Socket = io(import.meta.env.VITE_SOCKET_URL || '/', {
+const socket: Socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
   transports: ['websocket'],
   withCredentials: true,
 });

@@ -15,6 +15,20 @@ import { SettingsProvider } from './context/SettingsContext';
 import { api } from './api';
 import { useEffect, useState } from 'react';
 
+const HomeRedirect = ({ module }: { module?: string }) => {
+  switch (module) {
+    case 'inventory': return <Navigate to="/inventory" replace />;
+    case 'point_of_sale': return <Navigate to="/pos" replace />;
+    case 'orders_pipeline': return <Navigate to="/orders" replace />;
+    case 'manager_approvals': return <Navigate to="/approvals" replace />;
+    case 'supplier_portal': return <Navigate to="/supplier-portal" replace />;
+    case 'settings': return <Navigate to="/settings" replace />;
+    case 'dashboard':
+    default:
+      return <Dashboard />;
+  }
+};
+
 function App() {
   const { user, isSignedIn, isLoaded } = useUser();
   const [dbUser, setDbUser] = useState<any>(null);
@@ -28,14 +42,17 @@ function App() {
         imageUrl: user.imageUrl,
       }).then(res => {
         setDbUser(res.data);
-        localStorage.setItem('userRole', res.data.role);
+        localStorage.setItem('userRole', res.data.role || 'user');
+        if (res.data.module) {
+          localStorage.setItem('userModule', res.data.module);
+        }
       }).catch(err => {
         console.error('Failed to sync user', err);
       });
     }
   }, [isSignedIn, user]);
 
-  if (!isLoaded) {
+  if (!isLoaded || (isSignedIn && !dbUser)) {
     return <div className="flex h-screen items-center justify-center"><span className="loading loading-spinner loading-lg text-primary"></span></div>;
   }
 
@@ -51,7 +68,7 @@ function App() {
             {/* Protected Routes */}
             {isSignedIn ? (
               <Route path="/" element={<Layout />}>
-                <Route index element={<Dashboard />} />
+                <Route index element={<HomeRedirect module={dbUser?.module} />} />
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="pos" element={<POS />} />
                 <Route path="orders" element={<Orders />} />

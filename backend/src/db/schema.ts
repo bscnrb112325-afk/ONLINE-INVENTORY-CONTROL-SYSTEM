@@ -16,8 +16,10 @@ export const users = pgTable("users", {
   name: text("name"),
   phone: text("phone"),
   role: userRoleEnum("role").default("pos_staff").notNull(),
+  module: text("module").default("dashboard"),
   avatarDriveId: text("avatar_drive_id"),
   isActive: boolean("is_active").default(true).notNull(),
+  posPassword: text("pos_password"), // Password used to unlock POS screen
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

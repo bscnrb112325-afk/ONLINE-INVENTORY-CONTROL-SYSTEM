@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useUser } from '@clerk/clerk-react';
 import { api } from '../api';
-import { ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Sparkles, HelpCircle, UserCircle, DollarSign, ReceiptText } from 'lucide-react';
+import { ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Sparkles, HelpCircle, UserCircle, DollarSign, ReceiptText, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
 
 interface CartItem {
   goodId: string;
@@ -41,6 +41,26 @@ const POS = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [isSendingDigital, setIsSendingDigital] = useState(false);
   const [lastSalePayload, setLastSalePayload] = useState<any>(null);
+
+  // POS Lock Screen
+  const [isPosUnlocked, setIsPosUnlocked] = useState(false);
+  const [cashierName, setCashierName] = useState('');
+  const [posPassword, setPosPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [activeCashierId, setActiveCashierId] = useState<string | null>(null);
+  const [activeCashierName, setActiveCashierName] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Change Password Modal
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState('');
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   // User Role checking
   const isManagerOrAdmin = user?.publicMetadata?.role === 'manager' || user?.publicMetadata?.role === 'admin';
@@ -103,7 +123,8 @@ const POS = () => {
 
   // Listen to SSE for STK Push callback
   useEffect(() => {
-    const eventSource = new EventSource('http://localhost:5000/api/stream');
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const eventSource = new EventSource(`${apiUrl}/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'STK_PUSH_SUCCESS' && isWaitingForMpesa) {
@@ -150,6 +171,121 @@ const POS = () => {
       </div>
     );
   }
+
+  const handleUnlockPos = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUnlockError('');
+    setIsUnlocking(true);
+    try {
+      const res = await api.post('/users/verify-pos', {
+        name: cashierName,
+        password: posPassword
+      });
+      if (res.data.success) {
+        const userRole = res.data.user.role;
+        if (userRole === 'admin' || userRole === 'cashier') {
+          setIsPosUnlocked(true);
+          setActiveCashierId(res.data.user.id);
+          setActiveCashierName(res.data.user.name);
+        } else {
+          setUnlockError('Access Denied: Only Admins and Cashiers can access Point of Sale.');
+        }
+      }
+    } catch (err: any) {
+      setUnlockError('Incorrect username or password.');
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  if (!isPosUnlocked) {
+    return (
+      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
+        <div className="card w-96 bg-base-100 shadow-2xl border border-base-200">
+          <div className="card-body">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                <Lock size={32} />
+              </div>
+            </div>
+            <h2 className="card-title text-center block text-2xl mb-1">POS Locked</h2>
+            <p className="text-center text-base-content/60 text-sm mb-6">To login to Point of Sale use details on settings User Management.</p>
+            
+            <form onSubmit={handleUnlockPos} className="space-y-4">
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Cashier Name</span></label>
+                <input 
+                  type="text" 
+                  className="input input-bordered w-full" 
+                  placeholder="e.g. John Doe" 
+                  value={cashierName}
+                  onChange={(e) => setCashierName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Password</span></label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    className="input input-bordered w-full pr-10" 
+                    placeholder="••••••••" 
+                    value={posPassword}
+                    onChange={(e) => setPosPassword(e.target.value)}
+                    required
+                  />
+                  <button 
+                    type="button"
+                    className="absolute inset-y-0 right-3 flex items-center text-base-content/50 hover:text-base-content"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              
+              {unlockError && (
+                <div className="alert alert-error text-sm p-3 rounded-lg">
+                  {unlockError}
+                </div>
+              )}
+              
+              <button 
+                type="submit" 
+                className="btn btn-primary w-full mt-4"
+                disabled={isUnlocking || !cashierName || !posPassword}
+              >
+                {isUnlocking ? <span className="loading loading-spinner loading-sm"></span> : 'Unlock Register'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangePasswordError('');
+    setChangePasswordSuccess(false);
+    setChangePasswordLoading(true);
+
+    try {
+      await api.post('/users/update-pos-password', {
+        userId: activeCashierId,
+        currentPassword,
+        newPassword
+      });
+      setChangePasswordSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+      setTimeout(() => setShowChangePassword(false), 2000);
+    } catch (err: any) {
+      setChangePasswordError(err.response?.data?.error || 'Failed to update password');
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  };
 
   // Handle Scanning Barcode directly
   const handleBarcodeScan = async () => {
@@ -236,7 +372,7 @@ const POS = () => {
     }
 
     setIsProcessing(true);
-    const userId = user?.id || 'system';
+    const userId = activeCashierId || user?.id || 'system';
 
     const paymentsArray = isSplitPayment ? [
       ...(splitAmounts.cash > 0 ? [{ method: 'cash', amount: splitAmounts.cash }] : []),
@@ -400,9 +536,30 @@ const POS = () => {
         <div className="p-4 border-b border-base-200 bg-primary text-primary-content flex justify-between items-center">
           <h2 className="font-bold flex items-center gap-2 text-sm uppercase tracking-wider">
             <ShoppingCart size={18} />
-            <span>POS Register</span>
+            <span>POS Register - {activeCashierName || 'Cashier'}</span>
           </h2>
-          <span className="badge badge-secondary badge-sm font-bold">{cart.length} items</span>
+          <div className="flex items-center gap-2">
+            <button 
+              className="btn btn-xs btn-ghost text-primary-content border border-primary-content/30 hover:bg-primary-content hover:text-primary"
+              onClick={() => setShowChangePassword(true)}
+              title="Change Password"
+            >
+              <KeyRound size={14} />
+            </button>
+            <button 
+              className="btn btn-xs btn-ghost text-primary-content border border-primary-content/30 hover:bg-primary-content hover:text-primary"
+              onClick={() => {
+                setIsPosUnlocked(false);
+                setActiveCashierId(null);
+                setActiveCashierName('');
+                setUnlockError('');
+              }}
+              title="Lock POS"
+            >
+              <Lock size={14} />
+            </button>
+            <span className="badge badge-secondary badge-sm font-bold">{cart.length} items</span>
+          </div>
         </div>
         
         {/* Cart Item rows */}
@@ -662,7 +819,7 @@ const POS = () => {
                 <p>Nairobi, Kenya</p>
                 <p>Tel: +254 700 000 000</p>
                 <p className="pt-2">Date: {new Date().toLocaleString()}</p>
-                <p>Cashier: {user?.firstName || user?.fullName || 'System'}</p>
+                <p>Cashier: {activeCashierName || user?.firstName || user?.fullName || 'System'}</p>
               </div>
 
               <div className="py-2 border-b border-gray-300">
@@ -820,6 +977,73 @@ const POS = () => {
                 Simulate Success
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <div className="modal modal-open">
+          <div className="modal-box w-96">
+            <h3 className="font-bold text-lg mb-4">Change POS Password</h3>
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div className="form-control">
+                <label className="label"><span className="label-text">Current Password</span></label>
+                <div className="relative">
+                  <input 
+                    type={showCurrentPassword ? "text" : "password"} 
+                    className="input input-bordered w-full pr-10"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                  />
+                  <button 
+                    type="button"
+                    className="absolute inset-y-0 right-3 flex items-center text-base-content/50 hover:text-base-content"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  >
+                    {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text">New Password</span></label>
+                <div className="relative">
+                  <input 
+                    type={showNewPassword ? "text" : "password"} 
+                    className="input input-bordered w-full pr-10"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                  <button 
+                    type="button"
+                    className="absolute inset-y-0 right-3 flex items-center text-base-content/50 hover:text-base-content"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                  >
+                    {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              
+              {changePasswordError && (
+                <div className="alert alert-error text-sm p-3 rounded-lg">
+                  {changePasswordError}
+                </div>
+              )}
+
+              {changePasswordSuccess && (
+                <div className="alert alert-success text-sm p-3 rounded-lg text-success-content font-bold">
+                  Password updated successfully!
+                </div>
+              )}
+              
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowChangePassword(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={changePasswordLoading || !currentPassword || !newPassword}>
+                  {changePasswordLoading ? <span className="loading loading-spinner loading-sm"></span> : 'Update Password'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { Package, TrendingUp, AlertCircle, DollarSign, Brain, Sparkles, Bell, BellOff, ArrowRight } from 'lucide-react';
+import { Package, TrendingUp, AlertCircle, DollarSign, Brain, Sparkles, Bell, BellOff, ArrowRight, Lock, Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { UserHeader } from '../components/UserHeader';
 
 const StatCard = ({ title, value, icon, trend, isPositive }: any) => (
   <div className="stat bg-base-100 shadow-md rounded-2xl border border-base-200 p-6 flex items-center justify-between hover:scale-[1.02] transition-transform duration-200">
@@ -22,8 +23,43 @@ const StatCard = ({ title, value, icon, trend, isPositive }: any) => (
 const Dashboard = () => {
   const queryClient = useQueryClient();
 
+  // Dashboard Lock Screen
+  const [isDashboardUnlocked, setIsDashboardUnlocked] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<any>(null);
+  const [userName, setUserName] = useState('');
+  const [dashboardPassword, setDashboardPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleUnlockDashboard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUnlockError('');
+    setIsUnlocking(true);
+    try {
+      const res = await api.post('/users/verify-pos', {
+        name: userName,
+        password: dashboardPassword
+      });
+      if (res.data.success) {
+        const userRole = res.data.user.role;
+        if (userRole === 'admin' || userRole === 'manager') {
+          setIsDashboardUnlocked(true);
+          setLoggedInUser(res.data.user);
+        } else {
+          setUnlockError('Access Denied: Only Manager and Admin can access the Dashboard.');
+        }
+      }
+    } catch (err: any) {
+      setUnlockError('Incorrect username or password.');
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
   useEffect(() => {
-    const eventSource = new EventSource('http://localhost:5000/api/stream');
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const eventSource = new EventSource(`${apiUrl}/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (['STOCK_UPDATED', 'LOW_STOCK_DETECTED', 'OUT_OF_STOCK'].includes(data.type)) {
@@ -115,8 +151,84 @@ const Dashboard = () => {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 4);
 
+  if (!isDashboardUnlocked) {
+    return (
+      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
+        <div className="card w-96 bg-base-100 shadow-2xl border border-base-200">
+          <div className="card-body">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                <Lock size={32} />
+              </div>
+            </div>
+            <h2 className="card-title text-center block text-2xl mb-1">Dashboard Locked</h2>
+            <p className="text-center text-base-content/60 text-sm mb-6">To login to Dashboard use details on settings User Management.</p>
+            
+            <form onSubmit={handleUnlockDashboard} className="space-y-4">
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Username</span></label>
+                <input 
+                  type="text" 
+                  className="input input-bordered w-full" 
+                  placeholder="e.g. Admin" 
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-control">
+                <label className="label"><span className="label-text font-bold">Password</span></label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    className="input input-bordered w-full pr-10" 
+                    placeholder="••••••••" 
+                    value={dashboardPassword}
+                    onChange={(e) => setDashboardPassword(e.target.value)}
+                    required
+                  />
+                  <button 
+                    type="button"
+                    className="absolute inset-y-0 right-3 flex items-center text-base-content/50 hover:text-base-content"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+              
+              {unlockError && (
+                <div className="alert alert-error text-sm p-3 rounded-lg">
+                  {unlockError}
+                </div>
+              )}
+              
+              <button 
+                type="submit" 
+                className="btn btn-primary w-full mt-4"
+                disabled={isUnlocking || !userName || !dashboardPassword}
+              >
+                {isUnlocking ? <span className="loading loading-spinner loading-sm"></span> : 'Unlock Dashboard'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-in fade-in duration-500 space-y-8">
+      {loggedInUser && (
+        <UserHeader 
+          user={loggedInUser} 
+          onLogout={() => {
+            setIsDashboardUnlocked(false);
+            setLoggedInUser(null);
+            setDashboardPassword('');
+          }} 
+        />
+      )}
       {/* Welcome & Live Alert Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
