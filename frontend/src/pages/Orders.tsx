@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck, Lock } from 'lucide-react';
@@ -84,6 +84,20 @@ const Orders = () => {
     },
   });
 
+  const selectedOrder = orders.find((o: any) => o.id === selectedOrderId) || null;
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
+  const selectedPurchase = purchasesList.find((p: any) => p.id === selectedPurchaseId) || null;
+
+  // Auto-select first item if none selected
+  useEffect(() => {
+    if (activeTab === 'sales' && !selectedOrderId && orders.length > 0) {
+      setSelectedOrderId(orders[0].id);
+    }
+    if (activeTab === 'purchases' && !selectedPurchaseId && purchasesList.length > 0) {
+      setSelectedPurchaseId(purchasesList[0].id);
+    }
+  }, [orders, purchasesList, activeTab, selectedOrderId, selectedPurchaseId]);
+
   // Mutation to update order status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
@@ -113,10 +127,6 @@ const Orders = () => {
       </div>
     );
   }
-
-  const selectedOrder = orders.find((o: any) => o.id === selectedOrderId);
-  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
-  const selectedPurchase = purchasesList.find((p: any) => p.id === selectedPurchaseId);
 
   if (!isUnlocked) {
     return (
@@ -263,7 +273,9 @@ const Orders = () => {
                           </td>
                           <td>
                             <div className="text-sm font-semibold">{order.customer?.name || 'Walk-in Customer'}</div>
-                            <div className="text-xs text-base-content/50">By: {order.user?.name || 'Cashier'}</div>
+                            <div className="text-xs text-base-content/50">
+                              {order.user?.name === 'System User' ? 'Source: ZuriShop Online' : `By: ${order.user?.name || 'Cashier'}`}
+                            </div>
                           </td>
                           <td className="text-xs">
                             {new Date(order.createdAt).toLocaleDateString()}
@@ -319,6 +331,20 @@ const Orders = () => {
                   <span className={`badge font-bold ${STATUS_BADGES[(selectedOrder.orderStatus || 'Pending').charAt(0).toUpperCase() + (selectedOrder.orderStatus || 'Pending').slice(1)] || 'badge-ghost'}`}>
                     {(selectedOrder.orderStatus || 'Pending').charAt(0).toUpperCase() + (selectedOrder.orderStatus || 'Pending').slice(1)}
                   </span>
+                </div>
+
+                {/* Customer Info card */}
+                <div className="bg-base-200/50 p-4 rounded-xl space-y-2 border border-base-200/80">
+                  <h4 className="text-xs font-bold text-base-content/60 uppercase tracking-wider">Customer Details</h4>
+                  <div>
+                    <div className="font-bold text-sm flex items-center gap-2">
+                      <User size={14} className="text-primary" />
+                      {selectedOrder.customer?.name || 'Walk-in Customer'}
+                    </div>
+                    {selectedOrder.customer?.phone && <div className="text-xs text-base-content/70 ml-5">{selectedOrder.customer.phone}</div>}
+                    {selectedOrder.customer?.email && <div className="text-xs text-base-content/70 ml-5">{selectedOrder.customer.email}</div>}
+                    {selectedOrder.customer?.address && <div className="text-xs text-base-content/75 mt-1 ml-5 italic">{selectedOrder.customer.address}</div>}
+                  </div>
                 </div>
 
                 {/* Progress Stepper */}

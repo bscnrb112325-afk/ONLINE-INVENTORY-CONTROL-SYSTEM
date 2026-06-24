@@ -46,7 +46,7 @@ export const getSaleById = async (req: Request, res: Response) => {
 
 export const createSale = async (req: Request, res: Response) => {
   try {
-    const { customerId, customerName, customerPhone, userId, items, discountAmount = 0, paymentMethod, payments: splitPayments, amountTendered = 0 } = req.body;
+    const { customerId, customerName, customerPhone, customerEmail, customerAddress, userId, items, discountAmount = 0, paymentMethod, payments: splitPayments, amountTendered = 0 } = req.body;
 
     if (!items || !items.length) {
       return res.status(400).json({ error: "No items provided" });
@@ -63,12 +63,24 @@ export const createSale = async (req: Request, res: Response) => {
       
       if (existingCustomer) {
         finalCustomerId = existingCustomer.id;
+        // Optionally update the name, address and email if provided
+        const updates: any = {};
+        if (customerName) updates.name = customerName;
+        if (customerAddress) updates.address = customerAddress;
+        if (customerEmail) updates.email = customerEmail;
+
+        if (Object.keys(updates).length > 0) {
+          await db.update(customers)
+            .set(updates)
+            .where(eq(customers.id, existingCustomer.id));
+        }
       } else {
         // 2. Create new customer
         const [newCust] = await db.insert(customers).values({
           name: customerName,
           phone: customerPhone,
-          email: `${customerPhone}@customer.local`, // placeholder
+          email: customerEmail || `${customerPhone}@customer.local`, // placeholder if no email
+          address: customerAddress || null,
         }).returning();
         finalCustomerId = newCust.id;
       }

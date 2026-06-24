@@ -29,6 +29,8 @@ const ZuriShop = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card'>('mpesa');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -203,6 +205,8 @@ const ZuriShop = () => {
       customerId: null, // Walk-in / anonymous shopper on ZuriShop initially
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
+      customerEmail: customerEmail.trim(),
+      customerAddress: customerAddress.trim(),
       userId: 'system', // customer checkout
       items: cart.map((item) => ({
         goodId: item.goodId,
@@ -442,6 +446,27 @@ const ZuriShop = () => {
                       placeholder="07..."
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70">Email Address (Optional)</label>
+                    <input 
+                      type="email" 
+                      className="input input-bordered w-full input-sm" 
+                      placeholder="you@example.com"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-base-content/70">Delivery Location / Address</label>
+                    <input 
+                      type="text" 
+                      className="input input-bordered w-full input-sm" 
+                      placeholder="e.g. Nairobi CBD, Moi Avenue"
+                      value={customerAddress}
+                      onChange={(e) => setCustomerAddress(e.target.value)}
                       required
                     />
                   </div>
@@ -700,9 +725,42 @@ const ZuriShop = () => {
                           );
                         })}
                       </ul>
+
+                      {/* Customer Details */}
+                      {trackedOrder.customer && (
+                        <div className="mt-4 pt-4 border-t border-base-200">
+                          <h4 className="text-xs font-bold text-base-content/60 uppercase tracking-wider mb-2">Delivery Details</h4>
+                          <div className="bg-base-100 p-3 rounded-lg border border-base-200/50">
+                            <div className="font-bold text-sm">{trackedOrder.customer.name}</div>
+                            {trackedOrder.customer.phone && <div className="text-xs text-base-content/70 mt-1">{trackedOrder.customer.phone}</div>}
+                            {trackedOrder.customer.email && <div className="text-xs text-base-content/70">{trackedOrder.customer.email}</div>}
+                            {trackedOrder.customer.address && <div className="text-xs text-base-content/75 mt-1 italic">{trackedOrder.customer.address}</div>}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Order Items */}
+                      {trackedOrder.saleItems && trackedOrder.saleItems.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-base-200">
+                          <h4 className="text-xs font-bold text-base-content/60 uppercase tracking-wider mb-2">Purchased Items</h4>
+                          <div className="space-y-2">
+                            {trackedOrder.saleItems.map((item: any) => (
+                              <div key={item.id} className="flex justify-between items-center bg-base-100 p-2 rounded-lg border border-base-200/50">
+                                <div>
+                                  <div className="text-sm font-semibold">{item.good?.name || item.good?.subCategory?.name || 'Item'}</div>
+                                  <div className="text-[10px] text-base-content/50">Qty: {item.quantity}</div>
+                                </div>
+                                <div className="text-xs font-bold">
+                                  KSh {parseFloat(item.totalPrice).toLocaleString()}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       
-                      <div className="mt-4 pt-4 border-t border-base-200">
-                        <div className="text-xs text-base-content/60">Total Paid</div>
+                      <div className="mt-4 pt-4 border-t border-base-200 flex justify-between items-center">
+                        <div className="text-xs text-base-content/60 font-bold uppercase tracking-wider">Total Paid</div>
                         <div className="text-lg font-black text-primary">KSh {parseFloat(trackedOrder.totalAmount).toLocaleString()}</div>
                       </div>
                     </div>

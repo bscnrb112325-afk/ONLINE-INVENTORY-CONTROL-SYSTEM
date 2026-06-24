@@ -55,6 +55,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [settings, isLoading]);
 
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center bg-base-200"><span className="loading loading-spinner loading-lg text-primary"></span></div>;
+  }
+
   return (
     <SettingsContext.Provider value={{ settings, isLoading, refreshSettings: refetch }}>
       {children}
