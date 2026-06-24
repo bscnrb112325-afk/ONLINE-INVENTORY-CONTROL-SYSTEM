@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { sales, goods, analyticsWarehouse } from "../db/schema";
-import { sum, sql } from "drizzle-orm";
+import { sum, sql, lt, and, ilike } from "drizzle-orm";
 
 export function initAnalyticsCron() {
   console.log("[Analytics Job] Nightly data warehouse cron initialized.");
@@ -8,7 +8,33 @@ export function initAnalyticsCron() {
   // Simulate a nightly job by running it once on startup, then every hour.
   // In a real system, this would be `node-cron` running at 00:00 every day.
   runWarehouseAggregation();
-  setInterval(runWarehouseAggregation, 60 * 60 * 1000);
+  runOrderCleanup();
+  
+  setInterval(() => {
+    runWarehouseAggregation();
+    runOrderCleanup();
+  }, 60 * 60 * 1000);
+}
+
+async function runOrderCleanup() {
+  try {
+    console.log("[Analytics Job] Running 30-day delivered order cleanup...");
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const result = await db.delete(sales)
+      .where(and(
+        ilike(sales.orderStatus, 'delivered'),
+        lt(sales.createdAt, thirtyDaysAgo)
+      ))
+      .returning({ deletedId: sales.id });
+
+    if (result.length > 0) {
+      console.log(`[Analytics Job] Cleaned up ${result.length} delivered orders older than 30 days.`);
+    }
+  } catch (error) {
+    console.error("[Analytics Job] Error during order cleanup:", error);
+  }
 }
 
 async function runWarehouseAggregation() {

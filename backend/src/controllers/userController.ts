@@ -179,10 +179,14 @@ export async function verifyPosUnlock(req: Request, res: Response) {
 
     // Find user by name AND password (case insensitive for name)
     const allUsers = await db.query.users.findMany();
-    const user = allUsers.find((u: any) => 
-      u.name?.trim().toLowerCase() === name.trim().toLowerCase() &&
-      (u.posPassword === inputHash || u.password === inputHash)
-    );
+    const user = allUsers.find((u: any) => {
+      if (u.name?.trim().toLowerCase() !== name.trim().toLowerCase()) return false;
+      // Normal hash check
+      if (u.posPassword === inputHash || u.password === inputHash) return true;
+      // Fallback for new synced users who haven't set a POS password yet
+      if (u.password === "system_password" && (!u.posPassword || u.posPassword === "") && password === "admin") return true;
+      return false;
+    });
 
     if (user) {
       return res.json({ success: true, user });
