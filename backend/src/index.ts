@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
-
+import { createProxyMiddleware } from "http-proxy-middleware";
 import { ENV } from "./config/env";
 import { clerkMiddleware } from "@clerk/express";
 
@@ -54,6 +54,9 @@ if (ENV.NODE_ENV === "production") {
   app.get("/{*any}", (req: express.Request, res: express.Response) => {
     res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
   });
+} else {
+  // In development, proxy all non-API requests to the Vite dev server!
+  app.use(createProxyMiddleware({ target: "http://localhost:5173", changeOrigin: true, ws: true }));
 }
 
 app.listen(ENV.PORT, () => console.log("Server is up and running on PORT:", ENV.PORT));
