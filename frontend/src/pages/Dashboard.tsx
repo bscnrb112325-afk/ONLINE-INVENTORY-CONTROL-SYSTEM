@@ -51,7 +51,8 @@ const Dashboard = () => {
         }
       }
     } catch (err: any) {
-      setUnlockError('Incorrect username or password.');
+      const msg = err.response?.data?.error || err.message || 'Incorrect username or password.';
+      setUnlockError(`Login Failed: ${msg}`);
     } finally {
       setIsUnlocking(false);
     }
@@ -153,7 +154,7 @@ const Dashboard = () => {
 
   if (!isDashboardUnlocked) {
     return (
-      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
+      <div className="min-h-[80vh] py-8 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
         <div className="card w-full max-w-sm bg-base-100 shadow-2xl border border-base-200">
           <div className="card-body">
             <div className="flex justify-center mb-4">
