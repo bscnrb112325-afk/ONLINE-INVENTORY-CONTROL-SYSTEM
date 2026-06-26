@@ -332,7 +332,7 @@ const Inventory = () => {
               </div>
             </div>
             <h2 className="card-title text-center block text-2xl mb-1">Inventory Locked</h2>
-            <p className="text-center text-base-content/60 text-sm mb-6">To login to Inventory use details on settings User Management.</p>
+            <p className="text-center text-base-content/60 text-sm mb-6">To login enter username and password.</p>
             
             <form onSubmit={handleUnlock} className="space-y-4">
               <div className="form-control">
@@ -601,7 +601,7 @@ const Inventory = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="form-control">
                   <label className="label font-semibold text-xs">Barcode Serial / SKU</label>
                   <input 
@@ -636,7 +636,7 @@ const Inventory = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="form-control">
                   <label className="label font-semibold text-xs flex justify-between">
                     <span>Category Product</span>
@@ -672,7 +672,7 @@ const Inventory = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="form-control">
                   <label className="label font-semibold text-xs">Buy Rate (Cost)</label>
                   <input 
@@ -699,7 +699,7 @@ const Inventory = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="form-control">
                   <label className="label font-semibold text-xs">Initial Qty</label>
                   <input 
