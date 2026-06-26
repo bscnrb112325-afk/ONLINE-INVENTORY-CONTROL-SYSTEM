@@ -92,8 +92,8 @@ const ManagerApprovals = () => {
 
   if (!isUnlocked) {
     return (
-      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
-        <div className="card w-96 bg-base-100 shadow-2xl border border-base-200">
+      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
+        <div className="card w-full max-w-sm bg-base-100 shadow-2xl border border-base-200">
           <div className="card-body">
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">

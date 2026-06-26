@@ -58,7 +58,7 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const apiUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:5000/api`;
     const eventSource = new EventSource(`${apiUrl}/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -153,8 +153,8 @@ const Dashboard = () => {
 
   if (!isDashboardUnlocked) {
     return (
-      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
-        <div className="card w-96 bg-base-100 shadow-2xl border border-base-200">
+      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
+        <div className="card w-full max-w-sm bg-base-100 shadow-2xl border border-base-200">
           <div className="card-body">
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -372,11 +372,11 @@ const Dashboard = () => {
 
                   let body = '';
                   if (ins.type === 'demand_forecast') {
-                    body = `Predicted sales volume next week: KSh {parsedPred.predictedSalesNextWeek} units.`;
+                    body = `Predicted sales volume next week: ${parsedPred.predictedSalesNextWeek} units.`;
                   } else if (ins.type === 'dynamic_pricing') {
-                    body = `Suggested dynamic price: KSh ${parsedPred.suggestedPrice} (KSh {parsedPred.reason.slice(0, 45)}...)`;
+                    body = `Suggested dynamic price: KSh ${parsedPred.suggestedPrice} (${parsedPred.reason?.slice(0, 45)}...)`;
                   } else if (ins.type === 'restock') {
-                    body = `Low stock trigger. Suggested restock quantity: KSh {parsedPred.recommendedReorderQty} units.`;
+                    body = `Low stock trigger. Suggested restock quantity: ${parsedPred.recommendedReorderQty} units.`;
                   }
 
                   return (
