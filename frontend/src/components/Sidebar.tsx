@@ -7,7 +7,7 @@ const Sidebar = () => {
   const { settings } = useSettings();
   
   const menuItems = [
-    { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
+    { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={20} /> },
     { name: 'Inventory', path: '/inventory', icon: <Package size={20} /> },
     { name: 'Point of Sale', path: '/pos', icon: <ShoppingCart size={20} /> },
     { name: 'ZuriShop', path: '/zurishop', icon: <ShoppingBag size={20} /> },
