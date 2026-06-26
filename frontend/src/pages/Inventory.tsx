@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { Package, Plus, Search, Filter, AlertTriangle, Check, Download, Lock, Eye, EyeOff } from 'lucide-react';
+import { Package, Plus, Search, Filter, AlertTriangle, Check, Download, Lock, Eye, EyeOff, X } from 'lucide-react';
 import { downloadCSV } from '../utils/csvExport';
 import { UserHeader } from '../components/UserHeader';
 
@@ -11,6 +11,8 @@ const Inventory = () => {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editGoodId, setEditGoodId] = useState('');
+  const [hideAiAlerts, setHideAiAlerts] = useState(false);
+  const [draftQuantities, setDraftQuantities] = useState<Record<string, number>>({});
 
   // Category & Supplier Modals
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -158,6 +160,30 @@ const Inventory = () => {
     },
   });
 
+  const analyzeStockMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post('/ai/analyze-stock');
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['recommendations'] });
+      setHideAiAlerts(false); // Re-show alerts when newly scanned
+      setDraftQuantities({});
+      alert(`AI Analysis complete! Found ${data.newRecommendationsFound} new low-stock items.`);
+    }
+  });
+
+  const sendDraftsMutation = useMutation({
+    mutationFn: async (items: { id: string, qty: number }[]) => {
+      await api.post('/ai/recommendations/send-to-suppliers', { items });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recommendations'] });
+      setDraftQuantities({});
+      alert("Drafts successfully sent to supplier portal for bidding!");
+    }
+  });
+
   const addCatMutation = useMutation({
     mutationFn: async (payload: any) => {
       const res = await api.post('/inventory/subcategories', payload);
@@ -222,8 +248,23 @@ const Inventory = () => {
     );
   }
 
-  // Filter recommendations for restocks
-  const activeRestocks = recommendations.filter((r: any) => r.action === 'restock' && r.status === 'pending');
+  // Filter recommendations for restocks and deduplicate by productId
+  // Also ensure we only show items that are STILL low stock (qty <= threshold)
+  const activeRestocksRaw = recommendations.filter((r: any) => 
+    r.action === 'restock' && 
+    (r.status === 'pending' || r.status === 'review') &&
+    r.good && r.good.qty <= (r.good.reorderThreshold ?? 10)
+  );
+  
+  const activeRestocksMap = new Map();
+  for (const r of activeRestocksRaw) {
+    if (!activeRestocksMap.has(r.productId)) {
+      activeRestocksMap.set(r.productId, r);
+    }
+  }
+  const activeRestocks = Array.from(activeRestocksMap.values());
+  
+  const draftRestocks = activeRestocks.filter((r: any) => r.status === 'review');
 
   // Filter goods that are low on stock, have no pending restock, and are not dismissed
   const visibleLowStockItems = goods.filter(
@@ -407,6 +448,14 @@ const Inventory = () => {
         </div>
         <div className="flex gap-2">
           <button 
+            className="btn btn-outline btn-secondary shadow-md gap-2" 
+            onClick={() => analyzeStockMutation.mutate()}
+            disabled={analyzeStockMutation.isPending}
+          >
+            {analyzeStockMutation.isPending ? <span className="loading loading-spinner loading-sm"></span> : <Check size={20} />}
+            Run AI Stock Analysis
+          </button>
+          <button 
             className="btn btn-outline shadow-md gap-2" 
             onClick={() => downloadCSV(filteredGoods, "inventory_export.csv")}
           >
@@ -425,25 +474,80 @@ const Inventory = () => {
       </div>
 
       {/* AI Restocking Alert Banner */}
-      {activeRestocks.length > 0 && (
-        <div className="card bg-warning/10 border border-warning/30 text-warning-content rounded-2xl p-4 flex flex-row items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="text-warning animate-bounce shrink-0" size={28} />
-            <div>
-              <h4 className="font-bold text-sm">Critical Stock Restock Recommends</h4>
-              <p className="text-xs opacity-90 mt-0.5">
-                AI predicts restocking requests for {activeRestocks.length} product(s) to prevent stockout.
-              </p>
+      {!hideAiAlerts && activeRestocks.length > 0 && (
+        <div className="card bg-warning/10 border border-warning/30 text-warning-content rounded-2xl p-4 flex flex-col gap-3 shadow-sm animate-in slide-in-from-top-4 duration-300 relative">
+          <div className="flex flex-row items-center justify-between gap-4 mt-2">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="text-warning animate-bounce shrink-0" size={28} />
+              <div>
+                <h4 className="font-bold text-sm">Critical Stock AI Alerts</h4>
+                <p className="text-xs opacity-90 mt-0.5">
+                  AI has detected low/no stock for {activeRestocks.length} product(s).
+                  {draftRestocks.length > 0 ? ` Review and adjust quantities below before sending to suppliers.` : ` Bidding requests sent to Supplier Portal.`}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                className="btn btn-sm btn-ghost border border-warning/40 shadow-sm"
+                onClick={() => setHideAiAlerts(true)}
+              >
+                Close
+              </button>
+              {draftRestocks.length > 0 ? (
+                <button 
+                  className="btn btn-sm btn-warning shadow-md"
+                  disabled={sendDraftsMutation.isPending}
+                  onClick={() => {
+                    const itemsPayload = draftRestocks.map((r: any) => ({
+                      id: r.id,
+                      qty: draftQuantities[r.id] !== undefined ? draftQuantities[r.id] : r.recommendedQty
+                    }));
+                    sendDraftsMutation.mutate(itemsPayload);
+                  }}
+                >
+                  {sendDraftsMutation.isPending ? <span className="loading loading-spinner loading-sm"></span> : <Check size={16} />}
+                  <span>Send Drafts to Supplier Portal ({draftRestocks.length})</span>
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-sm btn-warning shadow-md"
+                  disabled
+                >
+                  <Check size={16} />
+                  <span>Awaiting Supplier Bids</span>
+                </button>
+              )}
             </div>
           </div>
-          <button 
-            className="btn btn-sm btn-warning shadow-md"
-            onClick={() => approveRestockMutation.mutate(activeRestocks[0].id)}
-            disabled={approveRestockMutation.isPending}
-          >
-            <Check size={16} />
-            <span>Approve Restock for {activeRestocks[0].good?.subCategory?.name}</span>
-          </button>
+          
+          <div className="mt-2 text-sm bg-base-100/50 p-3 rounded-lg border border-warning/20">
+            <p className="font-semibold mb-2">Affected Items:</p>
+            <ul className="list-none space-y-2">
+              {activeRestocks.map((r: any) => (
+                <li key={r.id} className="flex items-center gap-4 border-b border-warning/10 pb-2 last:border-0 last:pb-0">
+                  <div className="flex-1">
+                    <span className="font-mono text-primary font-bold">{r.good?.serial}</span> - {r.good?.subCategory?.name || r.good?.name} 
+                    <span className="ml-2 badge badge-sm badge-outline badge-error">Current Stock: {r.good?.qty}</span>
+                  </div>
+                  {r.status === 'review' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs opacity-70">Adjust Qty:</span>
+                      <input 
+                        type="number"
+                        className="input input-sm input-bordered w-24 text-base-content"
+                        value={draftQuantities[r.id] !== undefined ? draftQuantities[r.id] : r.recommendedQty}
+                        onChange={(e) => setDraftQuantities({ ...draftQuantities, [r.id]: Number(e.target.value) })}
+                      />
+                      <span className="badge badge-sm badge-warning">Draft</span>
+                    </div>
+                  ) : (
+                    <span className="badge badge-sm">Pending Bids</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 

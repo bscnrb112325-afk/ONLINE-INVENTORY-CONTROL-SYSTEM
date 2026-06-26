@@ -11,7 +11,9 @@ import {
   updateOrderStatus,
   getBidsForRecommendation,
   approveSupplierBid,
-  receivePurchase
+  receivePurchase,
+  analyzeStock,
+  sendRecommendationsToSuppliers
 } from "../controllers/aiController";
 
 const router = Router();
@@ -19,6 +21,8 @@ const router = Router();
 router.get("/insights", getAIInsights);
 router.get("/warehouse", getAnalyticsWarehouse);
 router.get("/recommendations", getRecommendations);
+router.post("/analyze-stock", analyzeStock);
+router.post("/recommendations/send-to-suppliers", sendRecommendationsToSuppliers);
 router.post("/recommendations/:id/approve", approveRecommendation);
 router.post("/recommendations/:id/dismiss", dismissRecommendation);
 

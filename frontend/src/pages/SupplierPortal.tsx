@@ -17,6 +17,7 @@ const SupplierPortal = () => {
   const [unlockError, setUnlockError] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [profilePaymentMode, setProfilePaymentMode] = useState<string>('mpesa');
 
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +84,12 @@ const SupplierPortal = () => {
   const { data: bids = [] } = useQuery({
     queryKey: ['supplierBids', selectedSupplierId],
     queryFn: async () => (await api.get(`/supplier-portal/${selectedSupplierId}/bids`)).data,
+    enabled: !!selectedSupplierId,
+  });
+
+  const { data: openRequests = [] } = useQuery({
+    queryKey: ['supplierOpenRequests', selectedSupplierId],
+    queryFn: async () => (await api.get(`/supplier-portal/${selectedSupplierId}/open-requests`)).data,
     enabled: !!selectedSupplierId,
   });
 
@@ -196,6 +203,10 @@ const SupplierPortal = () => {
       email: formData.get('email'),
       phone: formData.get('phone'),
       address: formData.get('address'),
+      categoryOfGoods: formData.get('categoryOfGoods'),
+      paymentMode: formData.get('paymentMode'),
+      mpesaDetails: formData.get('mpesaDetails'),
+      cardDetails: formData.get('cardDetails'),
     });
     alert("Profile updated successfully!");
   };
@@ -208,6 +219,7 @@ const SupplierPortal = () => {
       email: formData.get('email'),
       phone: formData.get('phone'),
       address: formData.get('address'),
+      categoryOfGoods: formData.get('categoryOfGoods'),
     });
     (e.target as HTMLFormElement).reset();
   };
@@ -217,6 +229,12 @@ const SupplierPortal = () => {
   }
 
   const selectedSupplier = suppliers.find((s: any) => s.id === selectedSupplierId);
+
+  useEffect(() => {
+    if (selectedSupplier && selectedSupplier.paymentMode) {
+      setProfilePaymentMode(selectedSupplier.paymentMode);
+    }
+  }, [selectedSupplier]);
 
   if (!isUnlocked) {
     return (
@@ -327,6 +345,7 @@ const SupplierPortal = () => {
                 <input type="text" name="name" className="input input-bordered w-full" placeholder="Company Name" defaultValue={loggedInUser?.role === 'supplier' ? loggedInUser.name : ''} required />
                 <input type="email" name="email" className="input input-bordered w-full" placeholder="Email Address" defaultValue={loggedInUser?.role === 'supplier' ? loggedInUser.email : ''} />
                 <input type="text" name="phone" className="input input-bordered w-full" placeholder="Phone Number" defaultValue={loggedInUser?.role === 'supplier' ? loggedInUser.phone : ''} />
+                <input type="text" name="categoryOfGoods" className="input input-bordered w-full" placeholder="Category of Goods (e.g., Electronics)" />
                 <textarea name="address" className="textarea textarea-bordered w-full" placeholder="Physical Address" />
                 <button type="submit" className="btn btn-success w-full" disabled={registerSupplierMutation.isPending}>
                   {registerSupplierMutation.isPending ? 'Registering...' : 'Register as Supplier'}
@@ -409,13 +428,14 @@ const SupplierPortal = () => {
                           <th>Date</th>
                           <th>Items</th>
                           <th>Total Amount</th>
+                          <th>Payment Mode</th>
                           <th>Status</th>
                           <th className="text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {orders.filter((o:any) => o.status === 'pending').length === 0 && (
-                          <tr><td colSpan={6} className="text-center py-8 text-base-content/50">No new orders found.</td></tr>
+                          <tr><td colSpan={7} className="text-center py-8 text-base-content/50">No new orders found.</td></tr>
                         )}
                         {orders.filter((o:any) => o.status === 'pending').map((order: any) => (
                           <tr key={order.id} className="hover">
@@ -429,6 +449,10 @@ const SupplierPortal = () => {
                               ))}
                             </td>
                             <td className="font-bold">KSh {parseFloat(order.totalAmount).toLocaleString()}</td>
+                            <td>
+                              <div className="uppercase font-medium text-xs text-base-content/70">{order.paymentMethod || 'card'}</div>
+                              {order.paymentDueDate && <div className="text-[10px] text-base-content/50 mt-1">Due: {new Date(order.paymentDueDate).toLocaleDateString()}</div>}
+                            </td>
                             <td><div className="badge badge-warning font-bold">Pending</div></td>
                             <td className="text-right space-x-2">
                                <button className="btn btn-sm btn-success" onClick={() => handleUpdateOrderStatus(order.id, 'accepted')}>Accept</button>
@@ -453,13 +477,14 @@ const SupplierPortal = () => {
                         <tr>
                           <th>Order ID</th>
                           <th>Items</th>
+                          <th>Payment Mode</th>
                           <th>Status</th>
                           <th className="text-right">Update Delivery</th>
                         </tr>
                       </thead>
                       <tbody>
                         {orders.filter((o:any) => ['accepted', 'shipped', 'completed'].includes(o.status)).length === 0 && (
-                          <tr><td colSpan={4} className="text-center py-8 text-base-content/50">No active deliveries.</td></tr>
+                          <tr><td colSpan={5} className="text-center py-8 text-base-content/50">No active deliveries.</td></tr>
                         )}
                         {orders.filter((o:any) => ['accepted', 'shipped', 'completed'].includes(o.status)).map((order: any) => (
                           <tr key={order.id} className="hover">
@@ -470,6 +495,12 @@ const SupplierPortal = () => {
                                   {g.name || g.subCategory?.name} <span className="text-xs text-base-content/50">x{order.expectedQty}</span>
                                 </div>
                               ))}
+                            </td>
+                            <td>
+                              <div className="uppercase font-medium text-xs text-base-content/70">
+                                {order.paymentMethod || 'card'}
+                              </div>
+                              {order.paymentDueDate && <div className="text-[10px] text-base-content/50 mt-1">Due: {new Date(order.paymentDueDate).toLocaleDateString()}</div>}
                             </td>
                             <td>
                               <div className={`badge ${order.status === 'completed' ? 'badge-success' : order.status === 'shipped' ? 'badge-info' : 'badge-primary'} font-bold capitalize`}>
@@ -493,53 +524,95 @@ const SupplierPortal = () => {
             )}
 
             {activeTab === 'bids' && (
-              <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 min-h-100">
-                 <div className="p-4 border-b border-base-200 bg-base-200/30">
-                    <h2 className="text-xl font-bold">Open Bids (Restock Requests)</h2>
-                 </div>
-                 <div className="overflow-x-auto">
-                    <table className="table w-full">
-                      <thead>
-                        <tr>
-                          <th>Item</th>
-                          <th>Requested Qty</th>
-                          <th>Your Bid Price</th>
-                          <th>Delivery Time (Days)</th>
-                          <th className="text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bids.filter((b:any) => b.status === 'pending').length === 0 && (
-                          <tr><td colSpan={5} className="text-center py-8 text-base-content/50">No pending bids.</td></tr>
-                        )}
-                        {bids.filter((b:any) => b.status === 'pending').map((bid: any) => (
-                          <tr key={bid.id} className="hover">
-                            <td>
-                               <div className="font-bold">{bid.recommendation?.good?.name || bid.recommendation?.good?.subCategory?.name}</div>
-                               <div className="text-xs text-base-content/60">SN: {bid.recommendation?.good?.serial}</div>
-                            </td>
-                            <td><div className="badge badge-outline">{bid.recommendation?.recommendedQty}</div></td>
-                            <td colSpan={3} className="p-0">
-                               <form onSubmit={async (e) => {
-                                 e.preventDefault();
-                                 const fd = new FormData(e.target as HTMLFormElement);
-                                 await api.put(`/supplier-portal/${selectedSupplierId}/bids/${bid.id}/submit`, {
-                                   bidPrice: fd.get('bidPrice'),
-                                   deliveryTimeDays: fd.get('deliveryTimeDays')
-                                 });
-                                 queryClient.invalidateQueries({ queryKey: ['supplierBids', selectedSupplierId] });
-                                 queryClient.invalidateQueries({ queryKey: ['supplierDashboard', selectedSupplierId] });
-                               }} className="flex items-center gap-2 p-2 w-full justify-end">
-                                 <input type="number" step="0.01" name="bidPrice" defaultValue={bid.bidPrice} className="input input-bordered input-sm w-24" placeholder="Price" required />
-                                 <input type="number" name="deliveryTimeDays" defaultValue={bid.deliveryTimeDays} className="input input-bordered input-sm w-20" placeholder="Days" required />
-                                 <button type="submit" className="btn btn-sm btn-primary">Submit Bid</button>
-                               </form>
-                            </td>
+              <div className="space-y-6">
+                <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 min-h-100">
+                   <div className="p-4 border-b border-base-200 bg-base-200/30">
+                      <h2 className="text-xl font-bold">Open Restock Requests</h2>
+                      <p className="text-sm text-base-content/60">Items that need restocking. Submit your price and delivery time.</p>
+                   </div>
+                   <div className="overflow-x-auto">
+                      <table className="table w-full">
+                        <thead>
+                          <tr>
+                            <th>Item</th>
+                            <th>Requested Qty</th>
+                            <th className="text-right">Submit Your Bid</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                 </div>
+                        </thead>
+                        <tbody>
+                          {openRequests.length === 0 && (
+                            <tr><td colSpan={3} className="text-center py-8 text-base-content/50">No new restock requests.</td></tr>
+                          )}
+                          {openRequests.map((req: any) => (
+                            <tr key={req.id} className="hover">
+                              <td>
+                                 <div className="font-bold">{req.good?.name || req.good?.subCategory?.name}</div>
+                                 <div className="text-xs text-base-content/60">SN: {req.good?.serial}</div>
+                              </td>
+                              <td><div className="badge badge-outline">{req.recommendedQty}</div></td>
+                              <td className="p-0">
+                                 <form onSubmit={async (e) => {
+                                   e.preventDefault();
+                                   const fd = new FormData(e.target as HTMLFormElement);
+                                   await api.post(`/supplier-portal/${selectedSupplierId}/bids`, {
+                                     recommendationId: req.id,
+                                     bidPrice: fd.get('bidPrice'),
+                                     deliveryTimeDays: fd.get('deliveryTimeDays')
+                                   });
+                                   queryClient.invalidateQueries({ queryKey: ['supplierBids', selectedSupplierId] });
+                                   queryClient.invalidateQueries({ queryKey: ['supplierOpenRequests', selectedSupplierId] });
+                                   queryClient.invalidateQueries({ queryKey: ['supplierDashboard', selectedSupplierId] });
+                                 }} className="flex items-center gap-2 p-2 w-full justify-end">
+                                   <input type="number" step="0.01" name="bidPrice" className="input input-bordered input-sm w-24" placeholder="Price" required />
+                                   <input type="number" name="deliveryTimeDays" className="input input-bordered input-sm w-20" placeholder="Days" required />
+                                   <button type="submit" className="btn btn-sm btn-primary">Submit Bid</button>
+                                 </form>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                   </div>
+                </div>
+
+                <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200">
+                   <div className="p-4 border-b border-base-200 bg-base-200/30">
+                      <h2 className="text-xl font-bold">Your Submitted Bids</h2>
+                   </div>
+                   <div className="overflow-x-auto">
+                      <table className="table w-full">
+                        <thead>
+                          <tr>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Your Price</th>
+                            <th>Days</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bids.length === 0 && (
+                            <tr><td colSpan={5} className="text-center py-8 text-base-content/50">You haven't submitted any bids yet.</td></tr>
+                          )}
+                          {bids.map((bid: any) => (
+                            <tr key={bid.id} className="hover">
+                              <td>
+                                 <div className="font-bold">{bid.recommendation?.good?.name || bid.recommendation?.good?.subCategory?.name}</div>
+                              </td>
+                              <td>{bid.recommendation?.recommendedQty}</td>
+                              <td className="font-bold">KSh {parseFloat(bid.bidPrice).toLocaleString()}</td>
+                              <td>{bid.deliveryTimeDays}</td>
+                              <td>
+                                <div className={`badge ${bid.status === 'approved' ? 'badge-success' : bid.status === 'rejected' ? 'badge-error' : 'badge-warning'} font-bold capitalize`}>
+                                  {bid.status}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                   </div>
+                </div>
               </div>
             )}
 
@@ -675,10 +748,44 @@ const SupplierPortal = () => {
                       </div>
                     </div>
                     <div className="form-control">
+                      <label className="label text-xs font-bold">Category of Goods</label>
+                      <input type="text" name="categoryOfGoods" className="input input-bordered w-full" defaultValue={selectedSupplier.categoryOfGoods} placeholder="e.g., Electronics, Hardware" />
+                    </div>
+                    <div className="form-control">
                       <label className="label text-xs font-bold">Physical Address</label>
                       <textarea name="address" className="textarea textarea-bordered w-full" defaultValue={selectedSupplier.address} />
                     </div>
-                    <button type="submit" className="btn btn-primary" disabled={updateProfileMutation.isPending}>
+
+                    <div className="divider my-2">Payment Settings</div>
+
+                    <div className="form-control">
+                      <label className="label text-xs font-bold">Preferred Payment Mode</label>
+                      <select 
+                        name="paymentMode" 
+                        className="select select-bordered w-full"
+                        value={profilePaymentMode}
+                        onChange={(e) => setProfilePaymentMode(e.target.value)}
+                      >
+                        <option value="mpesa">M-Pesa</option>
+                        <option value="card">Card / Bank</option>
+                      </select>
+                    </div>
+
+                    {profilePaymentMode === 'mpesa' && (
+                      <div className="form-control">
+                        <label className="label text-xs font-bold">M-Pesa Till/Paybill Number</label>
+                        <input type="text" name="mpesaDetails" className="input input-bordered w-full" defaultValue={selectedSupplier.mpesaDetails} placeholder="e.g. 123456" />
+                      </div>
+                    )}
+
+                    {profilePaymentMode === 'card' && (
+                      <div className="form-control">
+                        <label className="label text-xs font-bold">Card / Bank Details</label>
+                        <input type="text" name="cardDetails" className="input input-bordered w-full" defaultValue={selectedSupplier.cardDetails} placeholder="e.g. Account No: XXXXXX" />
+                      </div>
+                    )}
+
+                    <button type="submit" className="btn btn-primary mt-4" disabled={updateProfileMutation.isPending}>
                       {updateProfileMutation.isPending ? 'Saving...' : 'Save Profile Changes'}
                     </button>
                  </form>

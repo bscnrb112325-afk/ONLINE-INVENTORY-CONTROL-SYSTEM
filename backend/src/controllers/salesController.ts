@@ -8,7 +8,19 @@ import { DarajaService } from "../services/darajaService";
 export const getSales = async (req: Request, res: Response) => {
   try {
     const allSales = await db.query.sales.findMany({
-      with: { saleItems: true, customer: true, user: true },
+      with: { 
+        saleItems: {
+          with: {
+            good: {
+              with: {
+                subCategory: true
+              }
+            }
+          }
+        }, 
+        customer: true, 
+        user: true 
+      },
     });
     res.json(allSales);
   } catch (error: any) {

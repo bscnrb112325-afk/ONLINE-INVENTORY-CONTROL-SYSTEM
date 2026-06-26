@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { db } from "../db";
-import { aiInsights, recommendations, goods, notifications, sales, purchases, suppliers, supplierBids, analyticsWarehouse } from "../db/schema";
-import { eq, desc, and, ne } from "drizzle-orm";
+import { aiInsights, recommendations, goods, notifications, sales, purchases, suppliers, supplierBids, analyticsWarehouse, supplierNotifications } from "../db/schema";
+import { eq, desc, and, ne, or } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
 import { AIService } from "../services/aiService";
 
@@ -37,11 +37,11 @@ export const getAnalyticsWarehouse = async (req: Request, res: Response) => {
   }
 };
 
-// Get pending recommendations
+// Get pending and review recommendations
 export const getRecommendations = async (req: Request, res: Response) => {
   try {
     const recs = await db.query.recommendations.findMany({
-      where: eq(recommendations.status, "pending"),
+      where: or(eq(recommendations.status, "pending"), eq(recommendations.status, "review")),
       orderBy: [desc(recommendations.createdAt)],
       with: {
         good: {
@@ -52,6 +52,95 @@ export const getRecommendations = async (req: Request, res: Response) => {
       }
     });
     res.json(recs);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Send draft recommendations to supplier portal
+export const sendRecommendationsToSuppliers = async (req: Request, res: Response) => {
+  try {
+    const { items } = req.body; // Array of { id: string, qty: number }
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ error: "Invalid items payload" });
+    }
+
+    const allSuppliers = await db.query.suppliers.findMany();
+
+    for (const item of items) {
+      const { id, qty } = item;
+      
+      const rec = await db.query.recommendations.findFirst({
+        where: eq(recommendations.id, id),
+        with: { good: true }
+      });
+      
+      if (!rec || rec.status !== "review") continue;
+
+      // Update recommendation to pending and update quantity
+      await db.update(recommendations)
+        .set({ 
+          status: "pending", 
+          recommendedQty: Number(qty),
+          reason: `Reviewed AI Restock Request: Restock ${qty} units`
+        })
+        .where(eq(recommendations.id, id));
+
+      // Broadcast notifications and create pending bids
+      if (allSuppliers.length > 0 && rec.good) {
+        const notificationValues = allSuppliers.map((supplier: any) => ({
+          supplierId: supplier.id,
+          message: `Inventory Alert: Restock requested for ${rec.good.name || rec.good.serial} (Qty: ${qty})`,
+          isRead: false
+        }));
+        await db.insert(supplierNotifications).values(notificationValues);
+
+        const bidValues = allSuppliers.map((supplier: any) => ({
+          recommendationId: rec.id,
+          supplierId: supplier.id,
+          bidPrice: rec.good.buyRate, // Default
+          deliveryTimeDays: 7, 
+          reliabilityScore: 1.0,
+          status: "pending"
+        }));
+        await db.insert(supplierBids).values(bidValues);
+      }
+    }
+
+    res.json({ message: "Recommendations successfully sent to supplier portal" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Analyze all stock and generate recommendations
+export const analyzeStock = async (req: Request, res: Response) => {
+  try {
+    const allGoods = await db.query.goods.findMany();
+    const pendingRecs = await db.query.recommendations.findMany({
+      where: or(eq(recommendations.status, "pending"), eq(recommendations.status, "review"))
+    });
+    
+    const pendingProductIds = new Set(pendingRecs.map((r: any) => r.productId));
+    const newRecommendations = [];
+
+    for (const product of allGoods) {
+      const threshold = product.reorderThreshold || 10;
+      if (product.qty <= threshold && !pendingProductIds.has(product.id)) {
+        const recommendedQty = 50; // standard restock batch
+        const [rec] = await db.insert(recommendations).values({
+          productId: product.id,
+          action: "restock",
+          reason: `AI Scan: Stock level is ${product.qty} units (Threshold: ${threshold}). Recommended Restock: ${recommendedQty} units.`,
+          recommendedQty: recommendedQty,
+          status: "review",
+        }).returning();
+        
+        newRecommendations.push(rec);
+      }
+    }
+
+    res.json({ message: "Analysis complete", newRecommendationsFound: newRecommendations.length });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

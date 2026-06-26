@@ -93,13 +93,37 @@ export class AIService {
           status: "pending",
         }).returning();
 
-        // Simulate supplier bids
-        await simulateSupplierBids(rec.id, productId, data.recommended_reorder_qty);
+        // Removed auto-simulation of supplier bids. 
+        // Suppliers must now log in and manually place bids.
       }
 
       return data;
     } catch (error) {
-      console.error("[AIService] Error fetching reorder recommendation:", error);
+      console.error("[AIService] Error fetching reorder recommendation, falling back to basic rules:", error);
+      
+      // Fallback: fetch the actual reorder threshold from the database
+      const product = await db.query.goods.findFirst({
+        where: eq(goods.id, productId)
+      });
+      
+      const threshold = product ? product.reorderThreshold : 10;
+      
+      if (currentStock <= threshold) {
+        const recommendedQty = 50; // Fallback default batch size
+        const [rec] = await db.insert(recommendations).values({
+          productId,
+          action: "restock",
+          reason: `[Fallback System] Stock level is ${currentStock} units (Threshold: ${threshold}). Restock ${recommendedQty} units.`,
+          recommendedQty: recommendedQty,
+          status: "pending",
+        }).returning();
+        
+        return {
+           should_reorder: true,
+           recommended_reorder_qty: recommendedQty,
+           reorder_point: threshold
+        };
+      }
       return null;
     }
   }
