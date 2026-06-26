@@ -212,7 +212,7 @@ const Settings = () => {
 
   if (!isUnlocked) {
     return (
-      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
+      <div className="min-h-[80vh] py-8 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
         <div className="card w-full max-w-sm bg-base-100 shadow-2xl border border-base-200">
           <div className="card-body">
             <div className="flex justify-center mb-4">

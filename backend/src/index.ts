@@ -20,7 +20,9 @@ import { initAnalyticsCron } from "./services/analyticsJob";
 
 const app = express();
 
-app.use(cors({ origin: ENV.FRONTEND_URL, credentials: true }));
+// Allow any origin to connect, reflecting the request origin dynamically.
+// This is essential for local network testing (e.g., accessing via phone).
+app.use(cors({ origin: true, credentials: true }));
 app.use(clerkMiddleware());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
