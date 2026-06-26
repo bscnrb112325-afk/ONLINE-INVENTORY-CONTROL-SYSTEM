@@ -200,8 +200,8 @@ const POS = () => {
 
   if (!isPosUnlocked) {
     return (
-      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
-        <div className="card w-96 bg-base-100 shadow-2xl border border-base-200">
+      <div className="h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
+        <div className="card w-full max-w-sm bg-base-100 shadow-2xl border border-base-200">
           <div className="card-body">
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -982,8 +982,8 @@ const POS = () => {
       )}
       {/* Change Password Modal */}
       {showChangePassword && (
-        <div className="modal modal-open">
-          <div className="modal-box w-96">
+        <div className="modal modal-open bg-base-300/40 backdrop-blur-sm transition-all duration-300">
+          <div className="modal-box w-full max-w-sm">
             <h3 className="font-bold text-lg mb-4">Change POS Password</h3>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="form-control">
