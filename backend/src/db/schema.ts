@@ -47,6 +47,10 @@ export const suppliers = pgTable("suppliers", {
   email: text("email"),
   phone: text("phone"),
   address: text("address"),
+  categoryOfGoods: text("category_of_goods"),
+  paymentMode: text("payment_mode"),
+  mpesaDetails: text("mpesa_details"),
+  cardDetails: text("card_details"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -69,6 +73,9 @@ export const purchases = pgTable("purchases", {
   expectedQty: integer("expected_qty").notNull().default(0),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   status: purchaseStatusEnum("status").default("pending").notNull(),
+  paymentMethod: text("payment_method"),
+  paymentDueDate: timestamp("payment_due_date", { mode: "date" }),
+  isPaid: boolean("is_paid").default(false).notNull(),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

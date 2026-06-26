@@ -189,34 +189,20 @@ export function initEventBusListeners() {
     }
   });
 
-  // 6. SUPPLIER_BID_SUBMITTED (Auto-Approval Logic)
+  // 6. SUPPLIER_BID_SUBMITTED
   eventBus.on("SUPPLIER_BID_SUBMITTED", async (payload: any) => {
     console.log("[EventBus Handler] SUPPLIER_BID_SUBMITTED received for recommendation:", payload.recommendationId);
     try {
-      // Analyze submitted bid against AI rules
-      // In this simulated scenario, we just fetch all bids for this recommendation
-      // and if the top bid matches our criteria, we auto approve.
-      const bids = await db.query.supplierBids.findMany({
-        where: eq(supplierBids.recommendationId, payload.recommendationId),
-        with: { supplier: true, recommendation: true }
+      // In this updated workflow, bids are no longer auto-approved by AI.
+      // They remain in 'pending' status for managers to review in the Manager Approvals module.
+      // We can optionally send a notification to the manager here.
+      await db.insert(notifications).values({
+        message: `New supplier bid submitted for Recommendation ${payload.recommendationId.slice(0, 8)}. Awaiting manager review.`,
+        priority: "medium",
+        status: "unread",
       });
-      
-      const bestBid = await AIService.suggestBestSupplier(payload.productId, bids);
-      if (bestBid && bestBid.best_bid_id) {
-        const winningBid = bids.find((b: any) => b.id === bestBid.best_bid_id);
-        if (winningBid && parseFloat(winningBid.reliabilityScore) > 4.5 && winningBid.deliveryTimeDays <= 3) {
-          console.log(`[Auto-Approve] Bid ${winningBid.id} by ${winningBid.supplier.name} auto-approved (Score: ${winningBid.reliabilityScore})`);
-          
-          // Execute approval bypass
-          const req = { params: { bidId: winningBid.id }, body: { userId: "SYSTEM_AUTO" } } as any;
-          const res = { json: () => {}, status: () => ({ json: () => {} }) } as any;
-          await approveBid(req, res);
-          
-          await eventBus.publish("SUPPLIER_APPROVED", "procurement", { bidId: winningBid.id });
-        }
-      }
     } catch (error) {
-      console.error("Error processing SUPPLIER_BID_SUBMITTED auto-approval:", error);
+      console.error("Error processing SUPPLIER_BID_SUBMITTED notification:", error);
     }
   });
 }

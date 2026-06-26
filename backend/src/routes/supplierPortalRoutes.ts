@@ -3,7 +3,8 @@ import {
   getSupplierOrders, 
   updateOrderStatus, 
   getSupplierBids, 
-  submitSupplierBid,
+  submitNewSupplierBid,
+  getOpenRequests,
   getDashboardStats,
   getSupplierGoods,
   updateGoodPrice,
@@ -25,8 +26,9 @@ router.get("/:supplierId/orders", getSupplierOrders);
 router.put("/:supplierId/orders/:orderId/status", updateOrderStatus);
 
 // Bidding endpoints
+router.get("/:supplierId/open-requests", getOpenRequests);
 router.get("/:supplierId/bids", getSupplierBids);
-router.put("/:supplierId/bids/:bidId/submit", submitSupplierBid);
+router.post("/:supplierId/bids", submitNewSupplierBid);
 
 // Pricing
 router.get("/:supplierId/goods", getSupplierGoods);

@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { db } from "../db";
-import { purchases, supplierBids, goods, supplierDocuments, supplierNotifications, suppliers } from "../db/schema";
+import { purchases, supplierBids, goods, supplierDocuments, supplierNotifications, suppliers, recommendations } from "../db/schema";
 import { eq, count } from "drizzle-orm";
 
 export const getSupplierOrders = async (req: Request, res: Response) => {
@@ -66,6 +66,35 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const getOpenRequests = async (req: Request, res: Response) => {
+  try {
+    const supplierId = req.params.supplierId as string;
+    
+    // Find all 'restock' recommendations that are 'pending'
+    const openRequests = await db.query.recommendations.findMany({
+      where: eq(recommendations.status, "pending"),
+      with: {
+        good: {
+          with: { subCategory: true }
+        },
+        supplierBids: true
+      },
+      orderBy: (fields: any, { desc }: any) => [desc(fields.createdAt)]
+    });
+
+    // Filter out requests that this supplier has already bid on
+    const availableRequests = openRequests.filter((req: any) => {
+      // Check if any of the bids on this recommendation are from the current supplier
+      const hasBid = req.supplierBids.some((bid: any) => bid.supplierId === supplierId);
+      return !hasBid && req.action === "restock";
+    });
+
+    res.json(availableRequests);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const getSupplierBids = async (req: Request, res: Response) => {
   try {
     const supplierId = req.params.supplierId as string;
@@ -90,21 +119,27 @@ export const getSupplierBids = async (req: Request, res: Response) => {
   }
 };
 
-export const submitSupplierBid = async (req: Request, res: Response) => {
+export const submitNewSupplierBid = async (req: Request, res: Response) => {
   try {
-    const bidId = req.params.bidId as string;
-    const { bidPrice, deliveryTimeDays } = req.body;
+    const supplierId = req.params.supplierId as string;
+    const { recommendationId, bidPrice, deliveryTimeDays } = req.body;
     
-    const [updatedBid] = await db.update(supplierBids)
-      .set({ 
-        bidPrice: bidPrice.toString(), 
-        deliveryTimeDays: parseInt(deliveryTimeDays, 10),
-        status: 'submitted' 
-      })
-      .where(eq(supplierBids.id, bidId))
-      .returning();
+    const [newBid] = await db.insert(supplierBids).values({
+      recommendationId,
+      supplierId,
+      bidPrice: bidPrice.toString(),
+      deliveryTimeDays: parseInt(deliveryTimeDays, 10),
+      reliabilityScore: "5.0", // Default score for new bids
+      status: "submitted"
+    }).returning();
+    
+    const { eventBus } = await import("../services/eventBus");
+    await eventBus.publish("SUPPLIER_BID_SUBMITTED", "procurement", {
+      recommendationId,
+      bidId: newBid.id
+    });
       
-    res.json(updatedBid);
+    res.json(newBid);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -230,10 +265,10 @@ export const uploadDocument = async (req: Request, res: Response) => {
 export const updateSupplierProfile = async (req: Request, res: Response) => {
   try {
     const supplierId = req.params.supplierId as string;
-    const { name, email, phone, address } = req.body;
+    const { name, email, phone, address, categoryOfGoods, paymentMode, mpesaDetails, cardDetails } = req.body;
     
     const [updatedSupplier] = await db.update(suppliers)
-      .set({ name, email, phone, address })
+      .set({ name, email, phone, address, categoryOfGoods, paymentMode, mpesaDetails, cardDetails })
       .where(eq(suppliers.id, supplierId))
       .returning();
       
@@ -245,10 +280,10 @@ export const updateSupplierProfile = async (req: Request, res: Response) => {
 
 export const registerSupplier = async (req: Request, res: Response) => {
   try {
-    const { name, email, phone, address } = req.body;
+    const { name, email, phone, address, categoryOfGoods } = req.body;
     
     const [newSupplier] = await db.insert(suppliers).values({
-      name, email, phone, address
+      name, email, phone, address, categoryOfGoods
     }).returning();
     
     res.status(201).json(newSupplier);

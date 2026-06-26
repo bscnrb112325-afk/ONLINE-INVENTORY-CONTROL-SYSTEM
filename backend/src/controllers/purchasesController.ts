@@ -54,3 +54,23 @@ export const createPurchase = async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+export const markPurchasePaid = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { isPaid, paymentMethod } = req.body;
+    
+    const updateData: any = { isPaid };
+    if (paymentMethod) {
+      updateData.paymentMethod = paymentMethod;
+    }
+
+    const [purchase] = await db.update(purchases)
+      .set(updateData)
+      .where(eq(purchases.id, id))
+      .returning();
+    res.json(purchase);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};

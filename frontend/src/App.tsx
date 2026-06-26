@@ -25,7 +25,7 @@ const HomeRedirect = ({ module }: { module?: string }) => {
     case 'settings': return <Navigate to="/settings" replace />;
     case 'dashboard':
     default:
-      return <Dashboard />;
+      return <Navigate to="/dashboard" replace />;
   }
 };
 

@@ -54,7 +54,7 @@ export const getSubmittedBids = async (req: Request, res: Response) => {
 export const approveBid = async (req: Request, res: Response) => {
   try {
     const bidId = req.params.bidId as string;
-    const { userId } = req.body; // Passed from frontend (the manager's ID)
+    const { userId, paymentMethod } = req.body; // Passed from frontend (the manager's ID and selected payment mode)
 
     // 1. Fetch the target bid
     const targetBid = await db.query.supplierBids.findFirst({
@@ -97,24 +97,43 @@ export const approveBid = async (req: Request, res: Response) => {
       finalUserId = fallbackUser?.id || "fallback-manager";
     }
 
+    const paymentDueDate = new Date();
+    paymentDueDate.setDate(paymentDueDate.getDate() + 30);
+
     const [newPurchase] = await db.insert(purchases).values({
       supplierId: targetBid.supplierId,
       userId: finalUserId,
       goodId: targetBid.recommendation.productId,
       expectedQty: targetBid.recommendation.recommendedQty,
       totalAmount: targetBid.bidPrice.toString(),
-      status: "pending"
+      status: "completed", // Instantly completed per user requirement
+      paymentMethod: paymentMethod || "card",
+      paymentDueDate
     }).returning();
 
-    // Link the item being purchased to the newly created purchase order
-    // Wait, typically we'd create a new item or link existing item. The recommendation is tied to an existing 'good'.
-    // In our simplified schema, a 'good' has a 'purchaseId'. But a good represents individual items or catalog? 
-    // Usually we update the 'goods' record purchaseId, or we create a new goods record.
-    // For simplicity, let's just update the good attached to the recommendation to point to this purchaseId.
+    // 6. Instantly update the inventory stock quantity
     if (targetBid.recommendation.productId) {
-      await db.update(goods)
-        .set({ purchaseId: newPurchase.id })
-        .where(eq(goods.id, targetBid.recommendation.productId));
+      const good = await db.query.goods.findFirst({
+        where: eq(goods.id, targetBid.recommendation.productId)
+      });
+      
+      if (good) {
+        await db.update(goods)
+          .set({ 
+            purchaseId: newPurchase.id,
+            qty: good.qty + targetBid.recommendation.recommendedQty
+          })
+          .where(eq(goods.id, targetBid.recommendation.productId));
+
+        // Emit stock updated event
+        const { eventBus } = await import("../services/eventBus");
+        await eventBus.publish("STOCK_UPDATED", "inventory", {
+          goodId: good.id,
+          newQty: good.qty + targetBid.recommendation.recommendedQty,
+          change: targetBid.recommendation.recommendedQty,
+          reason: "Instant restock from Manager Approval"
+        });
+      }
     }
 
     res.json({ success: true, purchaseId: newPurchase.id });

@@ -152,6 +152,11 @@ const Dashboard = () => {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 4);
 
+  const slowMovingItems = Object.entries(itemSalesCounts)
+    .map(([name, qty]) => ({ name, qty }))
+    .sort((a, b) => a.qty - b.qty)
+    .slice(0, 4);
+
   if (!isDashboardUnlocked) {
     return (
       <div className="min-h-[80vh] py-8 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500 px-4">
@@ -233,19 +238,21 @@ const Dashboard = () => {
       {/* Welcome & Live Alert Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-base-content tracking-tight">System Control Panel</h2>
+          <h2 className="text-2xl md:text-3xl font-extrabold text-base-content tracking-tight">Dashboard</h2>
           <p className="text-base-content/60 mt-1">Real-time indicators, smart workflows, and algorithmic analytics.</p>
         </div>
-        {unreadNotifs.length > 0 && (
-          <div className="alert alert-warning shadow-sm py-2 px-4 rounded-xl flex gap-2 w-auto animate-bounce text-xs font-semibold">
-            <AlertCircle size={16} />
-            <span>You have {unreadNotifs.length} unread stock/payment alerts!</span>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {unreadNotifs.length > 0 && (
+            <div className="alert alert-warning shadow-sm py-2 px-4 rounded-xl flex gap-2 w-auto animate-bounce text-xs font-semibold">
+              <AlertCircle size={16} />
+              <span>You have {unreadNotifs.length} unread stock/payment alerts!</span>
+            </div>
+          )}
+        </div>
       </div>
       
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div id="stats-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-4 scroll-mt-20">
         <StatCard 
           title="Total Revenue" 
           value={`KSh ${totalRevenue.toFixed(2)}`} 
@@ -281,7 +288,7 @@ const Dashboard = () => {
         {/* Left Columns - SVG Chart & AI predictions */}
         <div className="lg:col-span-2 space-y-6">
           {/* Revenue Analytics Chart */}
-          <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6">
+          <div id="sales-section" className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6 scroll-mt-20">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <TrendingUp size={20} className="text-primary" />
@@ -345,7 +352,7 @@ const Dashboard = () => {
           </div>
 
           {/* AI Decision Engine Feed */}
-          <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6 space-y-4">
+          <div id="ai-section" className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6 space-y-4 scroll-mt-20">
             <div className="flex justify-between items-center pb-2 border-b border-base-200">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <Brain className="text-primary animate-pulse" size={22} />
@@ -406,7 +413,7 @@ const Dashboard = () => {
         </div>
 
         {/* Right Column - Alerts, Notifications Drawer, Fast Moving Items */}
-        <div className="space-y-6">
+        <div id="alerts-section" className="space-y-6 scroll-mt-20">
           {/* Notifications Drawer */}
           <div className="bg-base-100 rounded-2xl shadow-md border border-base-200 p-6 flex flex-col max-h-96">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -451,7 +458,7 @@ const Dashboard = () => {
           <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <Sparkles size={20} className="text-success" />
-              <span>Fast-Moving SKUs</span>
+              <span>Fast-Moving item</span>
             </h3>
             
             {fastMovingItems.length === 0 ? (
@@ -470,6 +477,35 @@ const Dashboard = () => {
                       <p className="text-xs text-base-content/50">High Sales Velocity</p>
                     </div>
                     <div className="font-bold text-sm text-success">+{item.qty} units</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Low Moving Items */}
+          <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <Sparkles size={20} className="text-error opacity-70" />
+              <span>Low-Moving item</span>
+            </h3>
+            
+            {slowMovingItems.length === 0 ? (
+              <div className="p-4 text-center text-sm text-base-content/50">
+                Awaiting checkout transactions.
+              </div>
+            ) : (
+              <ul className="space-y-4">
+                {slowMovingItems.map((item, idx) => (
+                  <li key={idx} className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-error/10 text-error rounded-xl flex items-center justify-center font-bold text-sm">
+                      #{idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-sm truncate text-base-content">{item.name}</h4>
+                      <p className="text-xs text-base-content/50">Low Sales Velocity</p>
+                    </div>
+                    <div className="font-bold text-sm text-error">+{item.qty} units</div>
                   </li>
                 ))}
               </ul>
