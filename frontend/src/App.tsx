@@ -69,6 +69,7 @@ function App() {
             {isSignedIn ? (
               <Route path="/" element={<Layout />}>
                 <Route index element={<HomeRedirect module={dbUser?.module} />} />
+                <Route path="dashboard" element={<Dashboard />} />
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="pos" element={<POS />} />
                 <Route path="orders" element={<Orders />} />
