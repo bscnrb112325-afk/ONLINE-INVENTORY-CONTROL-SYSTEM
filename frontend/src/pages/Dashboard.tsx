@@ -162,7 +162,7 @@ const Dashboard = () => {
               </div>
             </div>
             <h2 className="card-title text-center block text-2xl mb-1">Dashboard Locked</h2>
-            <p className="text-center text-base-content/60 text-sm mb-6">To login to Dashboard use details on settings User Management.</p>
+            <p className="text-center text-base-content/60 text-sm mb-6">To login enter username and password.</p>
             
             <form onSubmit={handleUnlockDashboard} className="space-y-4">
               <div className="form-control">
@@ -232,7 +232,7 @@ const Dashboard = () => {
       {/* Welcome & Live Alert Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-extrabold text-base-content tracking-tight">System Control Panel</h2>
+          <h2 className="text-2xl md:text-3xl font-extrabold text-base-content tracking-tight">System Control Panel</h2>
           <p className="text-base-content/60 mt-1">Real-time indicators, smart workflows, and algorithmic analytics.</p>
         </div>
         {unreadNotifs.length > 0 && (

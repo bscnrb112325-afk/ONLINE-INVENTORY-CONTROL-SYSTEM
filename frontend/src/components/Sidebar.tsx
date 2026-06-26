@@ -18,7 +18,7 @@ const Sidebar = () => {
   ];
 
   return (
-    <div className="hidden md:flex flex-col w-64 bg-base-100 shadow-xl z-10 border-r border-base-200">
+    <div className="flex flex-col w-64 h-full bg-base-100 shadow-xl z-10 border-r border-base-200">
       <div className="flex items-center min-h-20 border-b border-base-200 px-4 py-4">
         <h1 className="text-base font-bold text-primary flex w-full items-center justify-between gap-3 overflow-hidden">
           <span className="truncate leading-tight text-left">{settings?.companyName || 'OICS'}</span>
@@ -37,6 +37,10 @@ const Sidebar = () => {
               <li key={item.name}>
                 <Link
                   to={item.path}
+                  onClick={() => {
+                    const drawer = document.getElementById('my-drawer-2') as HTMLInputElement;
+                    if (drawer && window.innerWidth < 1024) drawer.checked = false;
+                  }}
                   className={`flex gap-3 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
                     isActive 
                       ? 'bg-primary text-primary-content active:bg-primary/90' 

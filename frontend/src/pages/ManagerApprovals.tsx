@@ -101,7 +101,7 @@ const ManagerApprovals = () => {
               </div>
             </div>
             <h2 className="card-title text-center block text-2xl mb-1">Manager Approvals Locked</h2>
-            <p className="text-center text-base-content/60 text-sm mb-6">To login to Manager Approvals use details on settings User Management.</p>
+            <p className="text-center text-base-content/60 text-sm mb-6">To login enter username and password.</p>
             
             <form onSubmit={handleUnlock} className="space-y-4">
               <div className="form-control">
