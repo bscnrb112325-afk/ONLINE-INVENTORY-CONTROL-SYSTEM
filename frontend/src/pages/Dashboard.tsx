@@ -1081,7 +1081,8 @@ const Dashboard = () => {
                 <p className="font-bold text-sm flex items-center gap-2">⚙️ Setup Required — SMTP Email Configuration</p>
                 <ol className="text-sm space-y-1.5 list-decimal list-inside text-base-content/80">
                   <li>Use an SMTP provider (e.g., Gmail, SendGrid, Mailgun)</li>
-                  <li>Open <code className="bg-base-200 px-1 rounded text-xs">ai_service/.env</code> and fill in your credentials:</li>
+                  <li><strong>If running locally:</strong> Open <code className="bg-base-200 px-1 rounded text-xs">ai_service/.env</code> and fill in your credentials.</li>
+                  <li><strong>If deployed (e.g., on Sevalla):</strong> Add the following as Environment Variables in your hosting dashboard:</li>
                 </ol>
                 <pre className="bg-base-300 rounded-lg p-3 text-xs overflow-x-auto select-all">{`SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
@@ -1089,7 +1090,7 @@ SMTP_USER=your_email@gmail.com
 SMTP_PASSWORD=your_app_password
 EMAIL_RECIPIENTS=manager@example.com
 EMAIL_REPORT_HOUR=8`}</pre>
-                <p className="text-xs text-base-content/60">Then restart the AI service (Python) and click <strong>Refresh Status</strong>.</p>
+                <p className="text-xs text-base-content/60">Then restart the AI service and click <strong>Refresh Status</strong>.</p>
               </div>
             )}
           </div>
