@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { ShoppingBag, Search, Plus, Minus, Trash2, ShieldCheck, HelpCircle, Heart, Star, Sparkles, CreditCard, Truck, CheckCircle, Package, Hourglass } from 'lucide-react';
+import { ShoppingBag, Search, Plus, Minus, Trash2, ShieldCheck, HelpCircle, Heart, Star, Sparkles, CreditCard, Truck, CheckCircle, Package, Hourglass, MapPin } from 'lucide-react';
+import LocationPickerModal from '../components/LocationPickerModal';
 
 const ORDER_STATUSES = ['Pending', 'Paid', 'Processing', 'Packed', 'Shipped', 'Delivered'];
 
@@ -31,10 +32,14 @@ const ZuriShop = () => {
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card'>('mpesa');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [deliveryCost, setDeliveryCost] = useState<number>(0);
+  const [isCalculatingDelivery, setIsCalculatingDelivery] = useState(false);
 
   // M-Pesa States
   const [isWaitingForMpesa, setIsWaitingForMpesa] = useState(false);
@@ -47,6 +52,32 @@ const ZuriShop = () => {
   const [trackedOrder, setTrackedOrder] = useState<any>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [trackError, setTrackError] = useState('');
+
+  // AI Delivery Cost Calculation
+  useEffect(() => {
+    if (locationCoords) {
+      setIsCalculatingDelivery(true);
+      api.post('/ai/delivery-cost', {
+        lat: locationCoords.lat,
+        lng: locationCoords.lng,
+        address: customerAddress || "Pinned Location"
+      })
+      .then(res => {
+        if (res.data && res.data.cost) {
+          setDeliveryCost(res.data.cost);
+        }
+      })
+      .catch(err => {
+        console.error("Failed to calculate delivery cost", err);
+        setDeliveryCost(150); // fallback
+      })
+      .finally(() => {
+        setIsCalculatingDelivery(false);
+      });
+    } else {
+      setDeliveryCost(0);
+    }
+  }, [locationCoords]);
 
   useEffect(() => {
     const apiUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:5000/api`;
@@ -112,6 +143,8 @@ const ZuriShop = () => {
       setCart([]);
       setCustomerPhone('');
       setCustomerName('');
+      setCustomerAddress('');
+      setLocationCoords(null);
       setIsWaitingForMpesa(false);
       setStkPushRequestId(null);
     },
@@ -189,7 +222,7 @@ const ZuriShop = () => {
 
   const subtotal = cart.reduce((acc, item) => acc + item.quantity * item.unitPrice, 0);
   const vat = subtotal * 0.16;
-  const total = subtotal + vat;
+  const total = subtotal + vat + deliveryCost;
 
   const handleShopCheckout = (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +240,9 @@ const ZuriShop = () => {
       customerPhone: customerPhone.trim(),
       customerEmail: customerEmail.trim(),
       customerAddress: customerAddress.trim(),
+      deliveryLat: locationCoords?.lat ?? null,
+      deliveryLng: locationCoords?.lng ?? null,
+      deliveryCost,
       userId: 'system', // customer checkout
       items: cart.map((item) => ({
         goodId: item.goodId,
@@ -461,12 +497,38 @@ const ZuriShop = () => {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-base-content/70">Delivery Location / Address</label>
-                    <input 
-                      type="text" 
-                      className="input input-bordered w-full input-sm" 
+                    {/* Map pin button */}
+                    <button
+                      type="button"
+                      id="open-location-picker-btn"
+                      className="btn btn-outline btn-sm w-full gap-2 border-primary/40 text-primary hover:bg-primary hover:text-primary-content transition-all"
+                      onClick={() => setIsLocationPickerOpen(true)}
+                    >
+                      <MapPin size={14} />
+                      {customerAddress ? 'Change Location on Map' : 'Pin Location on Map'}
+                    </button>
+                    {/* Selected address preview */}
+                    {customerAddress ? (
+                      <div className="flex items-start gap-1.5 bg-primary/8 border border-primary/20 rounded-lg px-3 py-2 mt-1">
+                        <MapPin size={12} className="text-primary mt-0.5 shrink-0" />
+                        <p className="text-[11px] text-base-content leading-snug flex-1">{customerAddress}</p>
+                        <button
+                          type="button"
+                          className="text-base-content/40 hover:text-error ml-1 shrink-0 text-xs"
+                          onClick={() => { setCustomerAddress(''); setLocationCoords(null); }}
+                          title="Clear address"
+                        >✕</button>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-base-content/40 pl-1">or type manually:</p>
+                    )}
+                    {/* Manual text fallback */}
+                    <input
+                      type="text"
+                      className="input input-bordered w-full input-sm text-xs"
                       placeholder="e.g. Nairobi CBD, Moi Avenue"
                       value={customerAddress}
-                      onChange={(e) => setCustomerAddress(e.target.value)}
+                      onChange={(e) => { setCustomerAddress(e.target.value); setLocationCoords(null); }}
                       required
                     />
                   </div>
@@ -508,6 +570,17 @@ const ZuriShop = () => {
                     <span className="text-base-content/60">Tax (16% VAT)</span>
                     <span>KSh {vat.toFixed(2)}</span>
                   </div>
+                  {deliveryCost > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-base-content/60">AI Delivery Estimate</span>
+                      <span>KSh {deliveryCost.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {isCalculatingDelivery && (
+                    <div className="flex justify-between text-primary">
+                      <span className="text-base-content/60 flex items-center gap-1"><span className="loading loading-spinner loading-xs"></span> Calculating delivery...</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-sm text-base-content pt-2 border-t border-base-200">
                     <span>Grand Total</span>
                     <span className="text-primary">KSh {total.toFixed(2)}</span>
@@ -518,7 +591,7 @@ const ZuriShop = () => {
                   type="submit"
                   className="btn btn-primary w-full shadow-md"
                   onClick={handleShopCheckout}
-                  disabled={cart.length === 0 || isCheckingOut || checkoutMutation.isPending || !customerName || !customerPhone}
+                  disabled={cart.length === 0 || isCheckingOut || checkoutMutation.isPending || !customerName || !customerPhone || isCalculatingDelivery}
                 >
                   {isCheckingOut || checkoutMutation.isPending ? (
                     <>
@@ -775,6 +848,17 @@ const ZuriShop = () => {
           </div>
         </div>
       </div>
+
+      {/* Google Maps Location Picker Modal */}
+      <LocationPickerModal
+        isOpen={isLocationPickerOpen}
+        onClose={() => setIsLocationPickerOpen(false)}
+        onConfirm={(result) => {
+          setCustomerAddress(result.address);
+          setLocationCoords({ lat: result.lat, lng: result.lng });
+        }}
+        initialAddress={customerAddress}
+      />
     </div>
   );
 };

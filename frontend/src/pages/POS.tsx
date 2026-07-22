@@ -287,18 +287,39 @@ const POS = () => {
     }
   };
 
-  // Handle Scanning Barcode directly
+  // Handle Scanning Barcode directly (USB/Bluetooth scanners & manual entry)
   const handleBarcodeScan = async () => {
-    if (!scanSerial) return;
+    const query = scanSerial.trim();
+    if (!query) return;
+
+    // 1. Try instant local match
+    const localMatch = goods.find((g: any) => 
+      g.serial.toLowerCase() === query.toLowerCase() ||
+      (g.name && g.name.toLowerCase() === query.toLowerCase()) ||
+      (g.subCategory?.name && g.subCategory.name.toLowerCase() === query.toLowerCase())
+    );
+
+    if (localMatch) {
+      if (localMatch.qty <= 0) {
+        alert(`Product "${localMatch.name || localMatch.serial}" is sold out.`);
+        return;
+      }
+      addToCart(localMatch);
+      setScanSerial('');
+      return;
+    }
+
+    // 2. Backend API scan lookup fallback
     try {
-      const res = await api.get(`/sales/scan/${scanSerial}`);
+      const res = await api.get(`/sales/scan/${encodeURIComponent(query)}`);
       const good = res.data;
       if (good) {
         addToCart(good);
         setScanSerial('');
       }
-    } catch (err) {
-      alert("Barcode scan error: Good not found or out of stock.");
+    } catch (err: any) {
+      const msg = err.response?.data?.error || "Good not found for serial/barcode: " + query;
+      alert(`Barcode Scan Error: ${msg}`);
     }
   };
 

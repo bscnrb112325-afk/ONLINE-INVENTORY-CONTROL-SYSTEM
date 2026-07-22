@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { db } from "../db";
-import { categories, subCategories, goods, suppliers, recommendations, supplierNotifications, supplierBids } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { categories, subCategories, goods, suppliers, recommendations, supplierNotifications, supplierBids, forecasts, anomalyFlags, saleItems } from "../db/schema";
+import { eq, desc } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
 import { cacheService } from "../services/cacheService";
 
@@ -34,7 +34,13 @@ export const getGoods = async (req: Request, res: Response) => {
     
     console.log("[Inventory Cache] MISS: all_goods");
     const allGoods = await db.query.goods.findMany({
-      with: { subCategory: true }
+      with: { 
+        subCategory: true,
+        forecasts: {
+          limit: 1,
+          orderBy: [desc(forecasts.forecastDate)]
+        }
+      }
     });
     
     await cacheService.set("all_goods", allGoods, 60); // Cache for 60s
@@ -126,6 +132,39 @@ export const createGood = async (req: Request, res: Response) => {
       reorderThreshold: good.reorderThreshold
     });
 
+    // Trigger AI anomaly detection asynchronously
+    setTimeout(async () => {
+      try {
+        const aiServiceUrl = process.env.AI_SERVICE_URL || "http://localhost:8000";
+        const aiRes = await fetch(`${aiServiceUrl}/detect-anomaly`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product_id: good.id,
+            buy_rate: parseFloat(good.buyRate),
+            sell_rate: parseFloat(good.sellRate),
+            qty: good.qty
+          })
+        });
+        if (aiRes.ok) {
+          const result = await aiRes.json();
+          if (result.anomalies && result.anomalies.length > 0) {
+            for (const anom of result.anomalies) {
+              await db.insert(anomalyFlags).values({
+                sourceModule: "inventory",
+                entityId: good.id,
+                anomalyType: anom.anomaly_type,
+                severity: anom.severity,
+                status: "open",
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Anomaly detection failed", err);
+      }
+    }, 0);
+
     res.json(good);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -171,6 +210,39 @@ export const updateGood = async (req: Request, res: Response) => {
       reorderThreshold: good.reorderThreshold
     });
 
+    // Trigger AI anomaly detection asynchronously
+    setTimeout(async () => {
+      try {
+        const aiServiceUrl = process.env.AI_SERVICE_URL || "http://localhost:8000";
+        const aiRes = await fetch(`${aiServiceUrl}/detect-anomaly`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product_id: good.id,
+            buy_rate: parseFloat(good.buyRate),
+            sell_rate: parseFloat(good.sellRate),
+            qty: good.qty
+          })
+        });
+        if (aiRes.ok) {
+          const result = await aiRes.json();
+          if (result.anomalies && result.anomalies.length > 0) {
+            for (const anom of result.anomalies) {
+              await db.insert(anomalyFlags).values({
+                sourceModule: "inventory",
+                entityId: good.id,
+                anomalyType: anom.anomaly_type,
+                severity: anom.severity,
+                status: "open",
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Anomaly detection failed", err);
+      }
+    }, 0);
+
     res.json(good);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -189,6 +261,10 @@ export const deleteGood = async (req: Request, res: Response) => {
     if (!existingGood) {
       return res.status(404).json({ error: "Good not found" });
     }
+
+    // Clear dependent records first to prevent foreign key constraint violation
+    await db.delete(saleItems).where(eq(saleItems.goodId, id as string));
+    await db.delete(anomalyFlags).where(eq(anomalyFlags.entityId, id as string));
 
     // Delete the good
     await db.delete(goods).where(eq(goods.id, id as string));

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSettings } from '../context/SettingsContext';
 import { api } from '../api';
-import { Save, Building2, Palette, Upload, Users, Eye, EyeOff, Lock } from 'lucide-react';
+import { Save, Building2, Palette, Upload, Users, Eye, EyeOff, Lock, MessageSquare, CheckCircle, XCircle, Clock, Send } from 'lucide-react';
 import { UserHeader } from '../components/UserHeader';
 
 const availableThemes = [
@@ -148,6 +148,8 @@ const Settings = () => {
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [newResetPassword, setNewResetPassword] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
+
+
 
   useEffect(() => {
     if (settings) {
@@ -318,7 +320,8 @@ const Settings = () => {
         >
           <Users size={16} className="mr-2" />
           Admin & Users
-        </a> 
+        </a>
+
       </div>
 
       <form onSubmit={handleSave} className="bg-base-100 shadow-md rounded-2xl border border-base-200 overflow-hidden">
@@ -562,6 +565,8 @@ const Settings = () => {
           </button>
         </div>
       </form>
+
+
 
       {/* Create User Modal */}
       {showCreateModal && (
