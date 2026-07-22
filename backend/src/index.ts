@@ -61,5 +61,5 @@ if (ENV.NODE_ENV === "production") {
   app.use(createProxyMiddleware({ target: "http://localhost:5173", changeOrigin: true, ws: true }));
 }
 
-app.listen(ENV.PORT, () => console.log("Server is up and running on PORT:", ENV.PORT));
+app.listen(Number(ENV.PORT), "0.0.0.0", () => console.log("Server is up and running on PORT:", ENV.PORT));
 
