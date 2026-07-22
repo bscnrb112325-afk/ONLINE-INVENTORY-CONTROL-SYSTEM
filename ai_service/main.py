@@ -27,7 +27,12 @@ scheduler = AsyncIOScheduler(timezone=ZoneInfo("Africa/Nairobi"))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start scheduler on startup, stop on shutdown."""
-    report_hour = int(os.getenv("EMAIL_REPORT_HOUR", "8"))
+    try:
+        report_hour = int(os.getenv("EMAIL_REPORT_HOUR", "8"))
+    except ValueError:
+        report_hour = 8
+        print(f"[Warning] Invalid EMAIL_REPORT_HOUR in env, defaulting to {report_hour}")
+        
     scheduler.add_job(
         send_daily_email_report,
         CronTrigger(hour=report_hour, minute=0),
@@ -879,7 +884,10 @@ async def get_email_config():
     user       = os.getenv("SMTP_USER", "")
     password   = os.getenv("SMTP_PASSWORD", "")
     recipients = os.getenv("EMAIL_RECIPIENTS", "")
-    hour       = int(os.getenv("EMAIL_REPORT_HOUR", "8"))
+    try:
+        hour = int(os.getenv("EMAIL_REPORT_HOUR", "8"))
+    except ValueError:
+        hour = 8
     
     configured = bool(server and user and password and "your_" not in user)
     return {
