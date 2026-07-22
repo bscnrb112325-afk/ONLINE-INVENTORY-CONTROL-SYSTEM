@@ -18,6 +18,10 @@ async function migrate() {
         created_at timestamp NOT NULL DEFAULT now()
       );
     `);
+    console.log("Adding delivery_lat and delivery_lng to sales...");
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS delivery_lat double precision;`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS delivery_lng double precision;`);
+
     console.log("Migration successful!");
     process.exit(0);
   } catch (error) {

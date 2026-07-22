@@ -73,9 +73,9 @@ function App() {
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="pos" element={<POS />} />
                 <Route path="orders" element={<Orders />} />
-                <Route path="ai-insights" element={<AIInsightsPage />} />
+                <Route path="ai-insights" element={<Navigate to="/dashboard" replace />} />
                 <Route path="zurishop" element={<ZuriShop />} />
-                <Route path="reports" element={<Reports />} />
+                <Route path="reports" element={<Navigate to="/dashboard" replace />} />
                 <Route path="supplier-portal" element={<SupplierPortal />} />
                 <Route path="approvals" element={<ManagerApprovals />} />
                 <Route path="settings" element={<Settings />} />

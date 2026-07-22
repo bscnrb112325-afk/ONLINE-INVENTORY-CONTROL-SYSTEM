@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, pgEnum, integer, numeric, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, pgEnum, integer, numeric, boolean, doublePrecision } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 // Enums
@@ -8,6 +8,9 @@ export const goodStatusEnum = pgEnum("good_status", ["in_stock", "sold", "return
 export const saleStatusEnum = pgEnum("sale_status", ["pending", "completed", "refunded"]);
 export const paymentMethodEnum = pgEnum("payment_method", ["cash", "mpesa", "card", "bank_transfer"]);
 export const paymentTypeEnum = pgEnum("payment_type", ["supplier_payment", "customer_payment"]);
+export const aiSuggestionStatusEnum = pgEnum("ai_suggestion_status", ["pending", "accepted", "rejected"]);
+export const anomalySeverityEnum = pgEnum("anomaly_severity", ["low", "medium", "high"]);
+export const anomalyStatusEnum = pgEnum("anomaly_status", ["open", "resolved", "dismissed"]);
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Clerk ID
@@ -108,6 +111,8 @@ export const sales = pgTable("sales", {
   paymentMethod: paymentMethodEnum("payment_method").default("cash").notNull(),
   status: saleStatusEnum("status").default("completed").notNull(),
   orderStatus: text("order_status").default("Pending").notNull(), // "Pending" -> "Paid" -> "Processing" -> "Packed" -> "Shipped" -> "Delivered"
+  deliveryLat: doublePrecision("delivery_lat"),   // Customer GPS latitude (from ZuriShop map pin)
+  deliveryLng: doublePrecision("delivery_lng"),   // Customer GPS longitude (from ZuriShop map pin)
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -227,6 +232,52 @@ export const supplierNotifications = pgTable("supplier_notifications", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
+export const modelRuns = pgTable("model_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  modelName: text("model_name").notNull(),
+  version: text("version").notNull(),
+  runAt: timestamp("run_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const aiSuggestions = pgTable("ai_suggestions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  productId: uuid("product_id").notNull().references(() => goods.id, { onDelete: "cascade" }),
+  fieldName: text("field_name").notNull(),
+  suggestedValue: text("suggested_value").notNull(),
+  confidence: numeric("confidence", { precision: 4, scale: 2 }).notNull(),
+  status: aiSuggestionStatusEnum("status").default("pending").notNull(),
+  reviewedBy: text("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const visionScans = pgTable("vision_scans", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  productId: uuid("product_id").references(() => goods.id, { onDelete: "cascade" }),
+  imageUrl: text("image_url"),
+  barcodeDetected: boolean("barcode_detected").default(false).notNull(),
+  confidence: numeric("confidence", { precision: 4, scale: 2 }),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const forecasts = pgTable("forecasts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  productId: uuid("product_id").notNull().references(() => goods.id, { onDelete: "cascade" }),
+  forecastDate: timestamp("forecast_date", { mode: "date" }).notNull(),
+  predictedDemand: integer("predicted_demand").notNull(),
+  suggestedReorderQty: integer("suggested_reorder_qty").notNull(),
+  modelRunId: uuid("model_run_id").notNull().references(() => modelRuns.id, { onDelete: "cascade" }),
+});
+
+export const anomalyFlags = pgTable("anomaly_flags", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  sourceModule: text("source_module").notNull(),
+  entityId: uuid("entity_id").notNull(), // UUID, though it could point to different tables, so no strict FK here
+  anomalyType: text("anomaly_type").notNull(),
+  severity: anomalySeverityEnum("severity").default("low").notNull(),
+  status: anomalyStatusEnum("status").default("open").notNull(),
+  flaggedAt: timestamp("flagged_at", { mode: "date" }).notNull().defaultNow(),
+});
+
 // Relations
 export const categoriesRelations = relations(categories, ({ many }) => ({
   subCategories: many(subCategories),
@@ -245,6 +296,9 @@ export const goodsRelations = relations(goods, ({ one, many }) => ({
   aiInsights: many(aiInsights),
   recommendations: many(recommendations),
   supplierBids: many(supplierBids),
+  aiSuggestions: many(aiSuggestions),
+  visionScans: many(visionScans),
+  forecasts: many(forecasts),
 }));
 
 export const salesRelations = relations(sales, ({ one, many }) => ({
@@ -289,6 +343,24 @@ export const supplierDocumentsRelations = relations(supplierDocuments, ({ one })
 
 export const supplierNotificationsRelations = relations(supplierNotifications, ({ one }) => ({
   supplier: one(suppliers, { fields: [supplierNotifications.supplierId], references: [suppliers.id] }),
+}));
+
+export const aiSuggestionsRelations = relations(aiSuggestions, ({ one }) => ({
+  good: one(goods, { fields: [aiSuggestions.productId], references: [goods.id] }),
+  user: one(users, { fields: [aiSuggestions.reviewedBy], references: [users.id] }),
+}));
+
+export const visionScansRelations = relations(visionScans, ({ one }) => ({
+  good: one(goods, { fields: [visionScans.productId], references: [goods.id] }),
+}));
+
+export const modelRunsRelations = relations(modelRuns, ({ many }) => ({
+  forecasts: many(forecasts),
+}));
+
+export const forecastsRelations = relations(forecasts, ({ one }) => ({
+  good: one(goods, { fields: [forecasts.productId], references: [goods.id] }),
+  modelRun: one(modelRuns, { fields: [forecasts.modelRunId], references: [modelRuns.id] }),
 }));
 
 export const settings = pgTable("settings", {

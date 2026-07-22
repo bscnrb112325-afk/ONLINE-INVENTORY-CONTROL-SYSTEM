@@ -12,3 +12,4 @@ router.post("/mpesa/callback", mpesaCallback);
 router.post("/mpesa/simulate", simulateMpesaCallback);
 
 export default router;
+

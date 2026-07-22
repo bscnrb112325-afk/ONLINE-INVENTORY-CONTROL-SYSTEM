@@ -1,9 +1,11 @@
 import type { Request, Response } from "express";
 import { db } from "../db";
-import { aiInsights, recommendations, goods, notifications, sales, purchases, suppliers, supplierBids, analyticsWarehouse, supplierNotifications } from "../db/schema";
-import { eq, desc, and, ne, or } from "drizzle-orm";
+import { aiInsights, recommendations, goods, notifications, sales, saleItems, purchases, suppliers, supplierBids, analyticsWarehouse, supplierNotifications } from "../db/schema";
+import { eq, desc, and, ne, or, lte, sql } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
 import { AIService } from "../services/aiService";
+
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 
 // Get all AI Insights
 export const getAIInsights = async (req: Request, res: Response) => {
@@ -540,5 +542,503 @@ export const receivePurchase = async (req: Request, res: Response) => {
     res.json({ message: "Delivery received and verified successfully, stock updated" });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+};
+export const processVisionScan = async (req: Request, res: Response) => {
+  try {
+    const { imageBase64, barcode } = req.body;
+    if (!imageBase64 && !barcode) {
+      return res.status(400).json({ error: "Missing imageBase64 or barcode field in request" });
+    }
+
+    const aiRes = await fetch(`${AI_SERVICE_URL}/scan-vision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_base64: imageBase64 || "", barcode: barcode || "" }),
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      return res.status(502).json({ error: `AI service error: ${errText.slice(0, 200)}` });
+    }
+
+    const aiData = await aiRes.json();
+
+    // Check DB for duplicate SKU or name
+    let existingProduct = null;
+    if (aiData.serial) {
+      existingProduct = await db.query.goods.findFirst({
+        where: eq(goods.serial, aiData.serial)
+      });
+    }
+
+    if (!existingProduct && aiData.name) {
+      const allGoods = await db.query.goods.findMany({ limit: 100 });
+      existingProduct = allGoods.find((g: any) => g.name.toLowerCase() === aiData.name.toLowerCase()) || null;
+    }
+
+    // Try matching category and supplier in DB
+    const allSubCats = await db.query.subCategories.findMany();
+    const allSuppliers = await db.query.suppliers.findMany();
+
+    const matchedSubCat = aiData.category
+      ? allSubCats.find((c: any) => c.name.toLowerCase().includes(aiData.category.toLowerCase()) || aiData.category.toLowerCase().includes(c.name.toLowerCase()))
+      : null;
+
+    const matchedSupplier = aiData.supplier_suggestion
+      ? allSuppliers.find((s: any) => s.name.toLowerCase().includes(aiData.supplier_suggestion.toLowerCase()) || aiData.supplier_suggestion.toLowerCase().includes(s.name.toLowerCase()))
+      : null;
+
+    // Run data validation checks
+    const validationWarnings: string[] = [];
+    if (aiData.sell_rate <= 0) {
+      validationWarnings.push("Selling price is zero or negative.");
+    }
+    if (aiData.sell_rate > 0 && aiData.buy_rate >= aiData.sell_rate) {
+      validationWarnings.push("Cost price is equal to or higher than selling price (negative profit margin).");
+    }
+    if (!aiData.serial) {
+      validationWarnings.push("No barcode SKU extracted.");
+    }
+    if (existingProduct) {
+      validationWarnings.push(`Duplicate SKU/Product found: "${existingProduct.name}" (SKU: ${existingProduct.serial}).`);
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        ...aiData,
+        matchedSubCatId: matchedSubCat ? matchedSubCat.id : null,
+        matchedSupplierId: matchedSupplier ? matchedSupplier.id : null,
+        duplicateFound: !!existingProduct,
+        existingProduct: existingProduct ? {
+          id: existingProduct.id,
+          name: existingProduct.name,
+          serial: existingProduct.serial,
+          qty: existingProduct.qty
+        } : null,
+        validationWarnings
+      }
+    });
+  } catch (error: any) {
+    console.error("Error in processVisionScan:", error);
+    if (error.code === "ECONNREFUSED" || error.cause?.code === "ECONNREFUSED") {
+      return res.status(503).json({
+        error: "AI service is offline. Please make sure the Python AI service is running on port 8000.",
+      });
+    }
+    return res.status(500).json({ error: error.message || "Failed to process vision scan" });
+  }
+};
+
+export const saveAiSuggestions = async (req: any, res: any) => {
+  res.json({ success: true, message: "Stubbed saveAiSuggestions" });
+};
+
+function formatLocalAnswer(intent: string, data: any, question: string): string {
+  switch (intent) {
+    case "LOW_STOCK": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "Great news! All products are currently above their reorder thresholds. No restocking is needed right now.";
+      }
+      const names = items.slice(0, 5).map((i: any) => `• ${i.name} (Qty: ${i.qty}, Threshold: ${i.reorderThreshold})`);
+      return `⚠️ There are ${items.length} item(s) running low on stock:\n${names.join("\n")}\nConsider placing reorder requests soon.`;
+    }
+    case "BEST_SELLING": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "We don't have enough sales data to determine the best-selling items right now.";
+      }
+      const names = items.slice(0, 5).map((i: any) => `• ${i.name} — ${i.totalSold} units sold`);
+      return `🏆 Top-selling products:\n${names.join("\n")}\nThese are driving the most movement!`;
+    }
+    case "WORST_SELLING": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "We don't have enough sales data to determine the worst-selling items right now.";
+      }
+      const names = items.slice(0, 5).map((i: any) => `• ${i.name} — ${i.totalSold} units sold`);
+      return `📉 Slowest-moving products:\n${names.join("\n")}\nConsider running a discount or promotion to clear these items.`;
+    }
+    case "PRICING": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "No product pricing data is available at the moment.";
+      }
+      const lines = items.slice(0, 8).map((i: any) => `• ${i.name} — Buy: KSh ${Number(i.buyRate || 0).toLocaleString()} | Sell: KSh ${Number(i.sellRate || 0).toLocaleString()}`);
+      return `💰 Current product pricing:\n${lines.join("\n")}`;
+    }
+    case "REVENUE": {
+      const total = Number(data.totalRevenue || 0);
+      const count = Number(data.saleCount || 0);
+      return `📊 Total revenue: **KSh ${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}** across ${count} completed transaction(s).`;
+    }
+    case "SALES_SUMMARY": {
+      const total = Number(data.totalRevenue || 0);
+      const count = Number(data.saleCount || 0);
+      const items = data.items || [];
+      let ans = `🛒 Sales summary: ${count} transactions totalling KSh ${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}.`;
+      if (items.length) {
+        const top = items.slice(0, 5).map((i: any) => `• ${i.name} (${i.totalSold} sold)`);
+        ans += `\n\nTop movers:\n${top.join("\n")}`;
+      }
+      return ans;
+    }
+    case "PROFIT": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "No profitability data is available at the moment.";
+      }
+      const lines = items.slice(0, 6).map((i: any) => {
+        const buy = Number(i.buyRate || 0);
+        const sell = Number(i.sellRate || 0);
+        const margin = sell > 0 ? ((sell - buy) / sell) * 100 : 0;
+        return `• ${i.name} — Margin: ${margin.toFixed(1)}% (Cost: KSh ${buy.toLocaleString()} | Sell: KSh ${sell.toLocaleString()})`;
+      });
+      return `📈 Profit margins by product:\n${lines.join("\n")}`;
+    }
+    case "MOVING_GOODS": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "No movement data is available at the moment.";
+      }
+      const lines = items.slice(0, 6).map((i: any) => `• ${i.name} — ${i.totalSold} units sold`);
+      return `🚀 Inventory movement (units sold):\n${lines.join("\n")}\nFast movers are listed at the top.`;
+    }
+    case "INVENTORY_OVERVIEW": {
+      return `📦 Inventory overview:\n• Total SKUs: ${data.totalProducts}\n• Total units in stock: ${data.totalStock}\n• Products above threshold: ${data.inStock}\n• Low stock (needs reorder): ${data.lowStock}`;
+    }
+    case "HIGH_VALUE": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "No product data is available at the moment.";
+      }
+      const lines = items.slice(0, 6).map((i: any) => `• ${i.name} — KSh ${Number(i.sellRate || 0).toLocaleString()}`);
+      return `💎 Highest-priced products:\n${lines.join("\n")}`;
+    }
+    case "DAMAGED_GOODS": {
+      const items = data.items || [];
+      if (!items.length) {
+        return "Good news! There are no damaged or returned items recorded in the system.";
+      }
+      const lines = items.slice(0, 6).map((i: any) => `• ${i.name} (Status: ${i.status})`);
+      return `⚠️ ${items.length} item(s) marked as damaged/returned:\n${lines.join("\n")}`;
+    }
+    case "PAYMENT_METHODS": {
+      const breakdown = data.breakdown || {};
+      const keys = Object.keys(breakdown);
+      if (!keys.length) {
+        return "No payment method breakdown is available at the moment.";
+      }
+      const lines = keys.map((k) => `• ${k.toUpperCase()}: KSh ${Number(breakdown[k] || 0).toLocaleString()}`);
+      return `💳 Revenue by payment method:\n${lines.join("\n")}`;
+    }
+    default: {
+      return `Hello! I am your AI Inventory Assistant. Here are some questions you can ask me:\n• "Which products are running low on stock?"\n• "What are our best or worst selling items?"\n• "Show me our total revenue and sales summary"\n• "What are the profit margins for our items?"\n• "Which items are damaged or need reorder?"`;
+    }
+  }
+}
+
+export const processDashboardChat = async (req: any, res: any) => {
+  try {
+    const question = req.body?.question || "";
+    if (!question || typeof question !== "string") {
+      return res.status(400).json({ error: "Question is required." });
+    }
+
+    // 1. Parse intent via Python AI Service if online
+    let intent = "UNKNOWN";
+    try {
+      const intentRes = await fetch(`${AI_SERVICE_URL}/chat/parse-intent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      if (intentRes.ok) {
+        const intentData = await intentRes.json();
+        intent = intentData.intent || "UNKNOWN";
+      }
+    } catch (err) {
+      // AI Service offline / unreachable
+    }
+
+    // 2. Regex fallback if AI service intent is UNKNOWN
+    if (intent === "UNKNOWN") {
+      const q = question.toLowerCase();
+      if (/low stock|reorder|running low|out of stock|restock|threshold|shortage/.test(q)) intent = "LOW_STOCK";
+      else if (/best|top|popular|most sold|fast moving|fast-moving|leading/.test(q)) intent = "BEST_SELLING";
+      else if (/worst|least|slowest|slow moving|slow-moving|poor|bad|not selling/.test(q)) intent = "WORST_SELLING";
+      else if (/price|pricing|cost|buy rate|sell rate|rate|how much/.test(q)) intent = "PRICING";
+      else if (/revenue|income|total sales|turnover|money made/.test(q)) intent = "REVENUE";
+      else if (/sales|sold|transactions|orders|units sold/.test(q)) intent = "SALES_SUMMARY";
+      else if (/profit|margin|gain|markup|profitable/.test(q)) intent = "PROFIT";
+      else if (/moving|movement|velocity|turnover rate/.test(q)) intent = "MOVING_GOODS";
+      else if (/total stock|inventory|catalog|overview|all products|stock level/.test(q)) intent = "INVENTORY_OVERVIEW";
+      else if (/high value|expensive|costly|highest price|premium/.test(q)) intent = "HIGH_VALUE";
+      else if (/damaged|returned|defective|spoiled|faulty|broken/.test(q)) intent = "DAMAGED_GOODS";
+      else if (/payment|mpesa|cash|card|payment method/.test(q)) intent = "PAYMENT_METHODS";
+    }
+
+    // 3. Query PostgreSQL DB according to intent
+    const payload: any = { intent };
+
+    if (intent === "LOW_STOCK") {
+      const lowStockItems = await db
+        .select({
+          name: goods.name,
+          qty: goods.qty,
+          reorderThreshold: goods.reorderThreshold,
+          serial: goods.serial,
+        })
+        .from(goods)
+        .where(lte(goods.qty, goods.reorderThreshold));
+      payload.items = lowStockItems;
+
+    } else if (intent === "BEST_SELLING" || intent === "WORST_SELLING" || intent === "MOVING_GOODS") {
+      const soldStats = await db
+        .select({
+          goodId: goods.id,
+          name: goods.name,
+          totalSold: sql<number>`COALESCE(SUM(${saleItems.quantity}), 0)::int`,
+        })
+        .from(goods)
+        .leftJoin(saleItems, eq(goods.id, saleItems.goodId))
+        .groupBy(goods.id, goods.name);
+
+      if (intent === "BEST_SELLING" || intent === "MOVING_GOODS") {
+        soldStats.sort((a: any, b: any) => b.totalSold - a.totalSold);
+      } else {
+        soldStats.sort((a: any, b: any) => a.totalSold - b.totalSold);
+      }
+      payload.items = soldStats;
+
+    } else if (intent === "PRICING" || intent === "PROFIT") {
+      const allGoods = await db
+        .select({
+          name: goods.name,
+          buyRate: goods.buyRate,
+          sellRate: goods.sellRate,
+        })
+        .from(goods);
+      payload.items = allGoods;
+
+    } else if (intent === "REVENUE" || intent === "SALES_SUMMARY") {
+      const salesData = await db
+        .select({
+          totalRevenue: sql<number>`COALESCE(SUM(${sales.totalAmount}::numeric), 0)`,
+          saleCount: sql<number>`COUNT(*)`,
+        })
+        .from(sales);
+      payload.totalRevenue = Number(salesData[0]?.totalRevenue || 0);
+      payload.saleCount = Number(salesData[0]?.saleCount || 0);
+      payload.period = "all time";
+
+      const topGoods = await db
+        .select({
+          name: goods.name,
+          totalSold: sql<number>`COALESCE(SUM(${saleItems.quantity}), 0)::int`,
+        })
+        .from(goods)
+        .leftJoin(saleItems, eq(goods.id, saleItems.goodId))
+        .groupBy(goods.id, goods.name)
+        .orderBy(desc(sql`SUM(${saleItems.quantity})`))
+        .limit(5);
+      payload.items = topGoods;
+
+    } else if (intent === "INVENTORY_OVERVIEW") {
+      const totalCountRes = await db.select({ count: sql<number>`COUNT(*)` }).from(goods);
+      const totalQtyRes = await db.select({ sum: sql<number>`COALESCE(SUM(${goods.qty}), 0)` }).from(goods);
+      const lowStockCountRes = await db.select({ count: sql<number>`COUNT(*)` }).from(goods).where(lte(goods.qty, goods.reorderThreshold));
+
+      const totalProducts = Number(totalCountRes[0]?.count || 0);
+      const totalStock = Number(totalQtyRes[0]?.sum || 0);
+      const lowStock = Number(lowStockCountRes[0]?.count || 0);
+
+      payload.totalProducts = totalProducts;
+      payload.totalStock = totalStock;
+      payload.lowStock = lowStock;
+      payload.inStock = Math.max(0, totalProducts - lowStock);
+
+    } else if (intent === "HIGH_VALUE") {
+      const highValItems = await db
+        .select({
+          name: goods.name,
+          sellRate: goods.sellRate,
+          buyRate: goods.buyRate,
+        })
+        .from(goods)
+        .orderBy(desc(goods.sellRate))
+        .limit(10);
+      payload.items = highValItems;
+
+    } else if (intent === "DAMAGED_GOODS") {
+      const damaged = await db
+        .select({
+          name: goods.name,
+          status: goods.status,
+          qty: goods.qty,
+        })
+        .from(goods)
+        .where(eq(goods.status, "damaged"));
+      payload.items = damaged;
+
+    } else if (intent === "PAYMENT_METHODS") {
+      const pMethods = await db
+        .select({
+          method: sales.paymentMethod,
+          total: sql<number>`COALESCE(SUM(${sales.totalAmount}::numeric), 0)`,
+        })
+        .from(sales)
+        .groupBy(sales.paymentMethod);
+
+      const breakdown: Record<string, number> = {};
+      for (const p of pMethods) {
+        breakdown[p.method] = Number(p.total);
+      }
+      payload.breakdown = breakdown;
+    }
+
+    // 4. Try summarizing via AI service
+    try {
+      const sumRes = await fetch(`${AI_SERVICE_URL}/chat/summarize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, data: payload }),
+      });
+      if (sumRes.ok) {
+        const sumData = await sumRes.json();
+        if (sumData.answer) {
+          return res.json({ answer: sumData.answer });
+        }
+      }
+    } catch (err) {
+      // AI Service summarize endpoint offline / error
+    }
+
+    // 5. Fallback local answer formatter
+    const answer = formatLocalAnswer(intent, payload, question);
+    return res.json({ answer });
+  } catch (error: any) {
+    console.error("Error in processDashboardChat:", error);
+    return res.status(500).json({ error: error.message || "Failed to process chat" });
+  }
+};
+
+export const triggerForecastJob = async (req: any, res: any) => {
+  res.json({ success: true, message: "Stubbed triggerForecastJob" });
+};
+
+export const getAnomalies = async (req: any, res: any) => {
+  res.json([]);
+};
+
+export const dismissAnomaly = async (req: any, res: any) => {
+  res.json({ success: true, message: "Stubbed dismissAnomaly" });
+};
+
+
+
+export const sendWhatsAppReport = async (req: any, res: any) => {
+  res.json({ success: true, message: "Renamed to sendEmailReport internally" });
+};
+
+export const getWhatsAppConfig = async (req: any, res: any) => {
+  res.json({ configured: true });
+};
+
+export const sendEmailReport = async (req: any, res: any) => {
+  try {
+    const aiRes = await fetch(`${AI_SERVICE_URL}/email/send-report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body || {}),
+    });
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      return res.status(502).json({ error: `AI service error: ${errText.slice(0, 200)}` });
+    }
+    const data = await aiRes.json();
+    return res.json(data);
+  } catch (error: any) {
+    if (error.code === "ECONNREFUSED" || error.cause?.code === "ECONNREFUSED") {
+      return res.status(503).json({
+        success: false,
+        sent_to: [],
+        message: "AI service is offline. Start the Python service on port 8000 first.",
+      });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+export const getEmailConfig = async (req: any, res: any) => {
+  try {
+    const aiRes = await fetch(`${AI_SERVICE_URL}/email/config`);
+    if (!aiRes.ok) {
+      return res.status(502).json({ error: "AI service error" });
+    }
+    const data = await aiRes.json();
+    return res.json(data);
+  } catch (error: any) {
+    if (error.code === "ECONNREFUSED" || error.cause?.code === "ECONNREFUSED") {
+      return res.json({
+        configured: false,
+        recipients: [],
+        report_hour: 8,
+        server_set: false,
+        user_set: false,
+        password_set: false,
+        next_scheduled: "N/A — AI service offline",
+      });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateEmailRecipients = async (req: any, res: any) => {
+  try {
+    const aiRes = await fetch(`${AI_SERVICE_URL}/email/recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body || {}),
+    });
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      return res.status(502).json({ error: `AI service error: ${errText.slice(0, 200)}` });
+    }
+    const data = await aiRes.json();
+    return res.json(data);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+export const calculateDeliveryCost = async (req: any, res: any) => {
+  try {
+    const { lat, lng, address } = req.body;
+    if (!lat || !lng || !address) {
+      return res.status(400).json({ error: "Missing lat, lng, or address" });
+    }
+    const aiRes = await fetch(`${AI_SERVICE_URL}/delivery-cost`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat, lng, address }),
+    });
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      return res.status(502).json({ error: `AI service error: ${errText.slice(0, 200)}` });
+    }
+    const data = await aiRes.json();
+    return res.json(data);
+  } catch (error: any) {
+    if (error.code === "ECONNREFUSED" || error.cause?.code === "ECONNREFUSED") {
+      return res.status(503).json({
+        cost: 150,
+        distance_km: 0,
+        reason: "AI service offline. Standard fallback flat rate."
+      });
+    }
+    return res.status(500).json({ error: error.message });
   }
 };

@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { db } from "../db";
 import { sales, saleItems, payments, goods, customers, users } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
 import { DarajaService } from "../services/darajaService";
 
@@ -58,7 +58,7 @@ export const getSaleById = async (req: Request, res: Response) => {
 
 export const createSale = async (req: Request, res: Response) => {
   try {
-    const { customerId, customerName, customerPhone, customerEmail, customerAddress, userId, items, discountAmount = 0, paymentMethod, payments: splitPayments, amountTendered = 0 } = req.body;
+    const { customerId, customerName, customerPhone, customerEmail, customerAddress, deliveryLat, deliveryLng, deliveryCost = 0, userId, items, discountAmount = 0, paymentMethod, payments: splitPayments, amountTendered = 0 } = req.body;
 
     if (!items || !items.length) {
       return res.status(400).json({ error: "No items provided" });
@@ -104,7 +104,7 @@ export const createSale = async (req: Request, res: Response) => {
       subTotal += item.quantity * item.unitPrice;
     }
     
-    const totalAmount = Math.max(0, subTotal - discountAmount);
+    const totalAmount = Math.max(0, subTotal + Number(deliveryCost) - discountAmount);
 
     // 0. Ensure user exists (to prevent foreign key violations)
     if (userId) {
@@ -130,6 +130,8 @@ export const createSale = async (req: Request, res: Response) => {
       paymentMethod,
       status: "pending",
       orderStatus: "Pending",
+      deliveryLat: deliveryLat != null ? parseFloat(deliveryLat) : null,
+      deliveryLng: deliveryLng != null ? parseFloat(deliveryLng) : null,
     }).returning();
 
     // 2. Insert sale items and reduce stock
@@ -223,18 +225,35 @@ export const createSale = async (req: Request, res: Response) => {
 // POS Endpoint (Scan Barcode)
 export const scanBarcode = async (req: Request, res: Response) => {
   try {
-    const serial = req.params.serial as string;
-    const good = await db.query.goods.findFirst({
-      where: eq(goods.serial, serial),
+    const rawSerial = (req.params.serial as string || "").trim();
+    if (!rawSerial) {
+      return res.status(400).json({ error: "Missing barcode or serial number" });
+    }
+
+    // Search by exact serial, case-insensitive serial, or name
+    let good = await db.query.goods.findFirst({
+      where: or(
+        eq(goods.serial, rawSerial),
+        sql`LOWER(${goods.serial}) = LOWER(${rawSerial})`,
+        sql`LOWER(${goods.name}) = LOWER(${rawSerial})`
+      ),
       with: { subCategory: true }
     });
-    
+
     if (!good) {
-      return res.status(404).json({ error: "Good not found" });
+      // Partial search fallback
+      good = await db.query.goods.findFirst({
+        where: sql`${goods.serial} ILIKE ${'%' + rawSerial + '%'} OR ${goods.name} ILIKE ${'%' + rawSerial + '%'}`,
+        with: { subCategory: true }
+      });
+    }
+
+    if (!good) {
+      return res.status(404).json({ error: "Good not found for barcode / serial SKU: " + rawSerial });
     }
     
     if (good.qty <= 0) {
-       return res.status(400).json({ error: "Out of stock" });
+      return res.status(400).json({ error: `Product "${good.name || good.serial}" is sold out.` });
     }
 
     res.json(good);
@@ -323,3 +342,4 @@ export const simulateMpesaCallback = async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
   }
 };
+

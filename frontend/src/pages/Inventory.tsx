@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { Package, Plus, Search, Filter, AlertTriangle, Check, Download, Lock, Eye, EyeOff, X } from 'lucide-react';
+import { Package, Plus, Search, Filter, AlertTriangle, Check, Download, Lock, Eye, EyeOff, X, Camera, AlertCircle, Upload, Sparkles, Barcode, Info, CheckCircle, RefreshCw } from 'lucide-react';
 import { downloadCSV } from '../utils/csvExport';
 import { UserHeader } from '../components/UserHeader';
+import { CameraScanner } from '../components/CameraScanner';
 
 const Inventory = () => {
   const queryClient = useQueryClient();
@@ -25,15 +26,27 @@ const Inventory = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [serial, setSerial] = useState('');
+  const [brand, setBrand] = useState('');
   const [subCatId, setSubCatId] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [buyRate, setBuyRate] = useState('');
   const [sellRate, setSellRate] = useState('');
   const [qty, setQty] = useState('');
   const [reorderThreshold, setReorderThreshold] = useState('10');
+
   const [imageGoodId, setImageGoodId] = useState('');
   const [productDetails, setProductDetails] = useState('');
   const [dismissedLowStock, setDismissedLowStock] = useState<string[]>([]);
+
+  // AI Vision & Auto-Fill state
+  const [showScanner, setShowScanner] = useState(false);
+  const [aiSuggestedFields, setAiSuggestedFields] = useState<string[]>([]);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiSupplierSuggestion, setAiSupplierSuggestion] = useState('');
+  const [duplicateInfo, setDuplicateInfo] = useState<{ id: string; name: string; serial: string; qty: number } | null>(null);
+  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
+  const [barcodeLookupInput, setBarcodeLookupInput] = useState('');
+  const [aiSuccessMessage, setAiSuccessMessage] = useState('');
 
   // Lock Screen
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -108,22 +121,31 @@ const Inventory = () => {
   // Mutator to add new item
   const addGoodMutation = useMutation({
     mutationFn: async (newGood: any) => {
-      await api.post('/inventory/goods', newGood);
+      const res = await api.post('/inventory/goods', newGood);
+      return res.data;
     },
-    onSuccess: () => {
+    onSuccess: async (data) => {
+      // Log AI suggestions if any
+      if (aiSuggestedFields.length > 0 && data && data.id) {
+        const suggestions = aiSuggestedFields.map(field => ({
+          productId: data.id,
+          fieldName: field,
+          suggestedValue: field === 'name' ? name : description,
+          confidence: 0.95, // Mock confidence
+          status: 'accepted'
+        }));
+        try {
+          await api.post('/ai/suggestions', { suggestions });
+        } catch (e) {
+          console.error('Failed to log AI suggestions', e);
+        }
+      }
+      
       queryClient.invalidateQueries({ queryKey: ['goods'] });
       setIsModalOpen(false);
       // reset form
-      setName('');
-      setDescription('');
-      setSerial('');
-      setSubCatId('');
-      setSupplierId('');
-      setBuyRate('');
-      setSellRate('');
-      setQty('');
-      setReorderThreshold('10');
-      setImageGoodId('');
+      resetForm();
+      setAiSuggestedFields([]);
     },
   });
 
@@ -132,11 +154,28 @@ const Inventory = () => {
     mutationFn: async ({ id, ...updatedGood }: any) => {
       await api.put(`/inventory/goods/${id}`, updatedGood);
     },
-    onSuccess: () => {
+    onSuccess: async (_, variables) => {
+      // Log AI suggestions if any
+      if (aiSuggestedFields.length > 0 && variables.id) {
+        const suggestions = aiSuggestedFields.map(field => ({
+          productId: variables.id,
+          fieldName: field,
+          suggestedValue: field === 'name' ? name : description,
+          confidence: 0.95,
+          status: 'accepted'
+        }));
+        try {
+          await api.post('/ai/suggestions', { suggestions });
+        } catch (e) {
+          console.error('Failed to log AI suggestions', e);
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['goods'] });
       setIsModalOpen(false);
       setEditGoodId('');
       resetForm();
+      setAiSuggestedFields([]);
     },
   });
 
@@ -181,6 +220,40 @@ const Inventory = () => {
       queryClient.invalidateQueries({ queryKey: ['recommendations'] });
       setDraftQuantities({});
       alert("Drafts successfully sent to supplier portal for bidding!");
+    },
+  });
+
+  const triggerForecastMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post('/ai/trigger-forecast');
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['goods'] });
+      queryClient.invalidateQueries({ queryKey: ['recommendations'] });
+      alert(data.message);
+    },
+    onError: (err: any) => {
+      alert(`Forecast Job Failed: ${err.message}`);
+    }
+  });
+
+  const { data: anomalies = [] } = useQuery({
+    queryKey: ['anomalies'],
+    queryFn: async () => {
+      const res = await api.get('/ai/anomalies');
+      return res.data;
+    },
+    refetchInterval: 5000 // Poll for new anomalies
+  });
+
+  const dismissAnomalyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post(`/ai/anomalies/${id}/dismiss`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['anomalies'] });
     }
   });
 
@@ -219,6 +292,7 @@ const Inventory = () => {
     setName('');
     setDescription('');
     setSerial('');
+    setBrand('');
     setSubCatId('');
     setSupplierId('');
     setBuyRate('');
@@ -227,6 +301,12 @@ const Inventory = () => {
     setReorderThreshold('10');
     setImageGoodId('');
     setProductDetails('');
+    setAiSupplierSuggestion('');
+    setDuplicateInfo(null);
+    setValidationWarnings([]);
+    setBarcodeLookupInput('');
+    setAiSuccessMessage('');
+    setAiSuggestedFields([]);
   };
 
   // Mutator to quick approve restock recommendation
@@ -239,6 +319,131 @@ const Inventory = () => {
       queryClient.invalidateQueries({ queryKey: ['recommendations'] });
     },
   });
+
+  const handleAiIdentify = async (imageBase64: string | null, barcodeInput: string | null) => {
+    setIsAiProcessing(true);
+    setAiSuccessMessage('');
+    setDuplicateInfo(null);
+    setValidationWarnings([]);
+    try {
+      const res = await api.post('/ai/vision-scan', { imageBase64, barcode: barcodeInput });
+      if (res.data.success && res.data.data) {
+        const aiData = res.data.data;
+
+        if (aiData.name === "API Key Missing") {
+          alert("Gemini API Key is missing! Please add it to ai_service/.env to use AI Vision.");
+        }
+
+        const suggested: string[] = [];
+
+        if (aiData.name) {
+          setName(aiData.name);
+          suggested.push('name');
+        }
+        if (aiData.serial) {
+          setSerial(aiData.serial);
+          suggested.push('serial');
+        }
+        if (aiData.brand) {
+          setBrand(aiData.brand);
+          suggested.push('brand');
+        }
+        if (aiData.description) {
+          setDescription(aiData.description);
+          suggested.push('description');
+        }
+        if (aiData.buy_rate !== undefined && aiData.buy_rate !== null) {
+          setBuyRate(aiData.buy_rate.toString());
+          suggested.push('buyRate');
+        }
+        if (aiData.sell_rate !== undefined && aiData.sell_rate !== null) {
+          setSellRate(aiData.sell_rate.toString());
+          suggested.push('sellRate');
+        }
+        if (aiData.qty !== undefined && aiData.qty !== null) {
+          setQty(aiData.qty.toString());
+          suggested.push('qty');
+        }
+        if (aiData.reorder_threshold !== undefined && aiData.reorder_threshold !== null) {
+          setReorderThreshold(aiData.reorder_threshold.toString());
+          suggested.push('reorderThreshold');
+        }
+
+        if (aiData.product_details) {
+          setProductDetails(aiData.product_details);
+          suggested.push('productDetails');
+        }
+
+        if (aiData.matchedSubCatId) {
+          setSubCatId(aiData.matchedSubCatId);
+          suggested.push('subCatId');
+        } else if (aiData.category) {
+          const matchedCat = subcategories.find((c: any) => 
+            c.name.toLowerCase().includes(aiData.category.toLowerCase()) || 
+            aiData.category.toLowerCase().includes(c.name.toLowerCase())
+          );
+          if (matchedCat) {
+            setSubCatId(matchedCat.id);
+            suggested.push('subCatId');
+          }
+        }
+
+        if (aiData.matchedSupplierId) {
+          setSupplierId(aiData.matchedSupplierId);
+          suggested.push('supplierId');
+        }
+        if (aiData.supplier_suggestion) {
+          setAiSupplierSuggestion(aiData.supplier_suggestion);
+          suggested.push('supplierSuggestion');
+        }
+
+        if (imageBase64) {
+          setImageGoodId(imageBase64);
+          suggested.push('imageGoodId');
+        }
+
+        if (aiData.duplicateFound && aiData.existingProduct) {
+          setDuplicateInfo(aiData.existingProduct);
+        }
+
+        if (aiData.validationWarnings && aiData.validationWarnings.length > 0) {
+          setValidationWarnings(aiData.validationWarnings);
+        }
+
+        setAiSuggestedFields(suggested);
+        setAiSuccessMessage(`✨ AI identified "${aiData.name || 'product'}"! Category, brand, SKU & pricing suggestions loaded.`);
+
+        setEditGoodId('');
+        setIsModalOpen(true);
+      }
+    } catch (error) {
+      console.error('AI identification error', error);
+      alert('AI identification error. Please ensure backend and AI service are running.');
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  const handleScanResult = async (barcode: string | null, imageBase64: string | null) => {
+    setShowScanner(false);
+    if (barcode) {
+      handleAiIdentify(null, barcode);
+    } else if (imageBase64) {
+      handleAiIdentify(imageBase64, null);
+    }
+  };
+
+  const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      handleAiIdentify(base64String, null);
+    };
+    reader.readAsDataURL(file);
+  };
 
   if (goodsLoading) {
     return (
@@ -273,10 +478,12 @@ const Inventory = () => {
     !dismissedLowStock.includes(g.id)
   );
 
-  // Filter goods based on search and subcategory name
+  // Filter goods based on search, serial/SKU, and subcategory
   const filteredGoods = goods.filter((good: any) => {
-    const nameMatches = (good.subCategory?.name || 'Product').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        good.serial.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase();
+    const nameMatches = (good.name || '').toLowerCase().includes(term) ||
+                        (good.subCategory?.name || '').toLowerCase().includes(term) || 
+                        (good.serial || '').toLowerCase().includes(term);
     const categoryMatches = selectedCategory === '' || good.subCategory?.categoryId === selectedCategory;
     return nameMatches && categoryMatches;
   });
@@ -285,19 +492,23 @@ const Inventory = () => {
     e.preventDefault();
     if (!serial || !subCatId || !buyRate || !sellRate || !qty || !name) return;
     
+    const combinedDetails = brand 
+      ? `Brand: ${brand}\n${productDetails}`
+      : productDetails;
+
     const payload = {
       name,
       description,
       serial,
       subCatId,
-      supplierId,
+      supplierId: supplierId || null,
       buyRate: parseFloat(buyRate),
       sellRate: parseFloat(sellRate),
       qty: parseInt(qty),
-      reorderThreshold: parseInt(reorderThreshold),
+      reorderThreshold: reorderThreshold ? parseInt(reorderThreshold) : 10,
       status: 'in_stock',
       imageGoodId,
-      productDetails
+      productDetails: combinedDetails
     };
 
     if (editGoodId) {
@@ -318,8 +529,12 @@ const Inventory = () => {
     setSellRate(good.sellRate ? good.sellRate.toString() : '');
     setQty(good.qty !== undefined ? good.qty.toString() : '');
     setReorderThreshold(good.reorderThreshold !== undefined ? good.reorderThreshold.toString() : '10');
+
     setImageGoodId(good.imageGoodId || '');
     setProductDetails(good.productDetails || '');
+    setDuplicateInfo(null);
+    setValidationWarnings([]);
+    setAiSuccessMessage('');
     setIsModalOpen(true);
   };
 
@@ -456,6 +671,14 @@ const Inventory = () => {
             Run AI Stock Analysis
           </button>
           <button 
+            className="btn btn-outline btn-info shadow-md gap-2" 
+            onClick={() => triggerForecastMutation.mutate()}
+            disabled={triggerForecastMutation.isPending}
+          >
+            {triggerForecastMutation.isPending ? <span className="loading loading-spinner loading-sm"></span> : <Package size={20} />}
+            Run Forecast Job
+          </button>
+          <button 
             className="btn btn-outline shadow-md gap-2" 
             onClick={() => downloadCSV(filteredGoods, "inventory_export.csv")}
           >
@@ -472,6 +695,23 @@ const Inventory = () => {
           </button>
         </div>
       </div>
+
+      {/* Anomaly Detection Banner */}
+      {anomalies.length > 0 && (
+        <div className="card bg-error/10 border border-error/30 text-error-content rounded-2xl p-4 flex flex-col gap-2 shadow-sm animate-in slide-in-from-top-4 duration-300 relative mb-6">
+          <div className="flex flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="text-error shrink-0" size={28} />
+              <div>
+                <h4 className="font-bold text-sm">AI Data Anomalies Detected</h4>
+                <p className="text-xs opacity-90 mt-0.5">
+                  The AI detected {anomalies.length} anomalous entry/entries (e.g. negative margins or unrealistic stock). Please review them in the table below.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI Restocking Alert Banner */}
       {!hideAiAlerts && activeRestocks.length > 0 && (
@@ -624,7 +864,14 @@ const Inventory = () => {
                         </span>
                       </td>
                       <td className="font-bold text-sm">
-                        {good.qty} Units
+                        <div className="flex flex-col gap-1 items-start">
+                          <span>{good.qty} Units</span>
+                          {good.forecasts && good.forecasts.length > 0 && good.forecasts[0].suggestedReorderQty > 0 && (
+                            <span className="badge badge-info badge-xs text-[10px] font-mono" title={`Based on AI Demand Forecast from ${new Date(good.forecasts[0].forecastDate).toLocaleDateString()}`}>
+                              AI Suggests: +{good.forecasts[0].suggestedReorderQty}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="text-sm font-semibold text-base-content/70">
                           KSh {parseFloat(good.buyRate).toFixed(2)}
@@ -633,13 +880,24 @@ const Inventory = () => {
                           KSh {parseFloat(good.sellRate).toFixed(2)}
                       </td>
                       <td>
-                        {isOut ? (
-                          <span className="badge badge-error badge-sm font-bold">Out of Stock</span>
-                        ) : isLow ? (
-                          <span className="badge badge-warning badge-sm font-bold animate-pulse">Only {good.qty} Left</span>
-                        ) : (
-                          <span className="badge badge-success badge-sm font-bold text-success-content">In Stock</span>
-                        )}
+                        <div className="flex flex-col gap-1 items-start">
+                          {isOut ? (
+                            <span className="badge badge-error badge-sm font-bold">Out of Stock</span>
+                          ) : isLow ? (
+                            <span className="badge badge-warning badge-sm font-bold animate-pulse">Only {good.qty} Left</span>
+                          ) : (
+                            <span className="badge badge-success badge-sm font-bold text-success-content">In Stock</span>
+                          )}
+                          {anomalies.filter((a: any) => a.entityId === good.id).map((anom: any) => (
+                            <div key={anom.id} className="flex items-center gap-1 mt-1 bg-error/10 text-error px-2 py-1 rounded text-[10px] font-bold border border-error/20">
+                              <AlertCircle size={10} />
+                              <span title={anom.description} className="uppercase tracking-wider">{anom.anomalyType.replace('_', ' ')}</span>
+                              <button onClick={(e) => { e.stopPropagation(); dismissAnomalyMutation.mutate(anom.id); }} className="ml-1 hover:text-red-700 bg-error/20 rounded-full p-0.5" title="Dismiss">
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </td>
                       <td>
                         <div className="flex gap-2">
@@ -683,21 +941,162 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* Add Product Modal */}
-      {isModalOpen && (
+      {/* Add / Edit Product Modal */}
+      {isModalOpen && (() => {
+        const buyNum = parseFloat(buyRate) || 0;
+        const sellNum = parseFloat(sellRate) || 0;
+        const profitVal = sellNum - buyNum;
+        const marginPercent = sellNum > 0 ? ((profitVal / sellNum) * 100).toFixed(1) : '0.0';
+
+        return (
         <div className="modal modal-open">
-          <div className="modal-box rounded-2xl max-w-md border border-base-200 shadow-xl space-y-4">
-            <h3 className="font-bold text-lg text-base-content flex items-center gap-2">
-              <Package className="text-primary" />
-              <span>{editGoodId ? 'Edit Product' : 'Add New Catalog SKU'}</span>
-            </h3>
+          <div className="modal-box rounded-2xl max-w-lg border border-base-200 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            
+            {/* Modal Title & Actions */}
+            <div className="flex justify-between items-center border-b border-base-200 pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-base-content flex items-center gap-2">
+                  <Package className="text-primary w-5 h-5" />
+                  <span>{editGoodId ? 'Edit Product' : 'Add New Product'}</span>
+                </h3>
+                {!editGoodId && (
+                  <p className="text-xs text-base-content/60">Upload photo or scan barcode for smart AI auto-fill</p>
+                )}
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-sm btn-ghost btn-circle"
+                onClick={() => setIsModalOpen(false)}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Smart AI Auto-Fill Tools (When creating new product) */}
+            {!editGoodId && (
+              <div className="bg-base-200/60 rounded-xl p-3 border border-base-300/50 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-primary">
+                    <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
+                    AI Identification & Auto-Fill
+                  </span>
+                  {isAiProcessing && <span className="loading loading-spinner loading-xs text-primary"></span>}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Photo Upload Trigger */}
+                  <label className="btn btn-sm btn-outline btn-secondary w-full gap-2 cursor-pointer font-semibold text-xs">
+                    <Upload className="w-4 h-4" />
+                    Upload Product Photo
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handlePhotoFileUpload}
+                      disabled={isAiProcessing}
+                    />
+                  </label>
+
+                  {/* Camera Scanner Trigger */}
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline btn-primary w-full gap-2 font-semibold text-xs"
+                    onClick={() => setShowScanner(true)}
+                    disabled={isAiProcessing}
+                  >
+                    <Camera className="w-4 h-4" />
+                    Scan Camera / Barcode
+                  </button>
+                </div>
+
+                {/* Direct Barcode Lookup Input */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Barcode className="w-4 h-4 absolute left-3 top-2.5 text-base-content/40" />
+                    <input 
+                      type="text" 
+                      placeholder="Or enter Barcode / SKU..." 
+                      className="input input-xs input-bordered w-full pl-9"
+                      value={barcodeLookupInput}
+                      onChange={(e) => setBarcodeLookupInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (barcodeLookupInput.trim()) handleAiIdentify(null, barcodeLookupInput.trim());
+                        }
+                      }}
+                    />
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn btn-xs btn-primary font-bold px-3"
+                    onClick={() => {
+                      if (barcodeLookupInput.trim()) handleAiIdentify(null, barcodeLookupInput.trim());
+                    }}
+                    disabled={isAiProcessing || !barcodeLookupInput.trim()}
+                  >
+                    Identify SKU
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* AI Loading State Banner */}
+            {isAiProcessing && (
+              <div className="alert alert-info py-2 px-3 text-xs flex items-center gap-2 border-info/30">
+                <span className="loading loading-spinner loading-xs text-info"></span>
+                <span>AI processing product photo/barcode, calculating margins & verifying duplicate SKU...</span>
+              </div>
+            )}
+
+            {/* AI Success Message Banner */}
+            {aiSuccessMessage && !isAiProcessing && (
+              <div className="alert alert-success py-2 px-3 text-xs flex items-center gap-2 text-success-content">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span className="font-semibold">{aiSuccessMessage}</span>
+              </div>
+            )}
+
+            {/* Duplicate Check Warning Box */}
+            {duplicateInfo && (
+              <div className="alert alert-warning py-2.5 px-3 text-xs flex items-start gap-2 border-warning/40 shadow-sm">
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="font-bold block">Duplicate Product Warning</span>
+                  <span>
+                    Product <strong>"{duplicateInfo.name}"</strong> with SKU <strong>{duplicateInfo.serial}</strong> already exists in inventory ({duplicateInfo.qty} units).
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Data Validation Warnings */}
+            {validationWarnings.length > 0 && (
+              <div className="bg-error/10 border border-error/30 rounded-xl p-2.5 text-xs text-error space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> Data Validation Alerts:
+                </div>
+                {validationWarnings.map((warning, idx) => (
+                  <div key={idx} className="ml-4">• {warning}</div>
+                ))}
+              </div>
+            )}
             
             <form onSubmit={handleSaveProduct} className="space-y-4">
+              
+              {/* Product Name */}
               <div className="form-control">
-                <label className="label font-semibold text-xs">Item Name</label>
+                <label className="label font-semibold text-xs py-1 flex justify-between">
+                  <span>Item Name <span className="text-error">*</span></span>
+                  {aiSuggestedFields.includes('name') && (
+                    <span className="badge badge-accent badge-xs gap-1 font-mono text-[10px]">
+                      <Sparkles className="w-2.5 h-2.5" /> AI Suggested
+                    </span>
+                  )}
+                </label>
                 <input 
                   type="text" 
-                  placeholder="e.g. Premium Coffee Beans" 
+                  placeholder="e.g. Wireless Bluetooth Headphones" 
                   className="input input-bordered"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -705,46 +1104,55 @@ const Inventory = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Brand & Barcode SKU */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="form-control">
-                  <label className="label font-semibold text-xs">Barcode Serial / SKU</label>
+                  <label className="label font-semibold text-xs py-1 flex justify-between">
+                    <span>Brand Name</span>
+                    {aiSuggestedFields.includes('brand') && (
+                      <span className="badge badge-accent badge-xs text-[10px]">AI</span>
+                    )}
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Sony, Samsung" 
+                    className="input input-bordered"
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-control">
+                  <div className="flex justify-between items-center py-1">
+                    <label className="label font-semibold text-xs p-0">
+                      Barcode SKU <span className="text-error">*</span>
+                    </label>
+                    <button 
+                      type="button" 
+                      onClick={() => setSerial(`SN-${Math.floor(100000 + Math.random() * 900000)}`)}
+                      className="text-[11px] text-primary hover:underline font-bold"
+                      title="Auto-generate SKU"
+                    >
+                      ⚡ Auto SKU
+                    </button>
+                  </div>
                   <input 
                     type="text" 
                     placeholder="e.g. SN-883921" 
-                    className="input input-bordered"
+                    className="input input-bordered font-mono"
                     value={serial}
                     onChange={(e) => setSerial(e.target.value)}
                     required
                   />
                 </div>
-                <div className="form-control">
-                  <label className="label font-semibold text-xs">Image URL</label>
-                  <input 
-                    type="text" 
-                    placeholder="https://..." 
-                    className="input input-bordered"
-                    value={imageGoodId}
-                    onChange={(e) => setImageGoodId(e.target.value)}
-                  />
-                </div>
               </div>
 
-              <div className="form-control">
-                <label className="label font-semibold text-xs">Description</label>
-                <input 
-                  type="text" 
-                  placeholder="Short description..." 
-                  className="input input-bordered"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Category & Supplier */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="form-control">
-                  <label className="label font-semibold text-xs flex justify-between">
-                    <span>Category Product</span>
-                    <button type="button" className="text-primary text-xs" onClick={() => setIsCatModalOpen(true)}>+ New</button>
+                  <label className="label font-semibold text-xs py-1 flex justify-between">
+                    <span>Category <span className="text-error">*</span></span>
+                    <button type="button" className="text-primary text-xs hover:underline" onClick={() => setIsCatModalOpen(true)}>+ New</button>
                   </label>
                   <select 
                     className="select select-bordered"
@@ -758,95 +1166,193 @@ const Inventory = () => {
                     ))}
                   </select>
                 </div>
+
                 <div className="form-control">
-                  <label className="label font-semibold text-xs flex justify-between">
+                  <label className="label font-semibold text-xs py-1 flex justify-between">
                     <span>Supplier</span>
-                    <button type="button" className="text-primary text-xs" onClick={() => setIsSupModalOpen(true)}>+ New</button>
+                    <button type="button" className="text-primary text-xs hover:underline" onClick={() => setIsSupModalOpen(true)}>+ New</button>
                   </label>
                   <select 
                     className="select select-bordered"
                     value={supplierId}
                     onChange={(e) => setSupplierId(e.target.value)}
                   >
-                    <option value="">No Supplier</option>
+                    <option value="">No Supplier Selected</option>
                     {suppliers.map((sup: any) => (
                       <option key={sup.id} value={sup.id}>{sup.name}</option>
                     ))}
                   </select>
+                  {aiSupplierSuggestion && !supplierId && (
+                    <span className="text-[10px] text-primary font-semibold mt-1 block">
+                      💡 AI Suggests: {aiSupplierSuggestion}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="form-control">
-                  <label className="label font-semibold text-xs">Buy Rate (Cost)</label>
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    placeholder="10.00" 
-                    className="input input-bordered"
-                    value={buyRate}
-                    onChange={(e) => setBuyRate(e.target.value)}
-                    required
-                  />
+              {/* Cost, Selling Price & Live Profit Margin */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="form-control">
+                    <label className="label font-semibold text-xs py-1">
+                      Buy Rate / Cost (KSh) <span className="text-error">*</span>
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="100.00" 
+                      className="input input-bordered"
+                      value={buyRate}
+                      onChange={(e) => setBuyRate(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-control">
+                    <label className="label font-semibold text-xs py-1 flex justify-between">
+                      <span>Sell Rate / Price (KSh) <span className="text-error">*</span></span>
+                      {aiSuggestedFields.includes('sellRate') && (
+                        <span className="badge badge-accent badge-xs text-[10px]">AI Pricing</span>
+                      )}
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="150.00" 
+                      className="input input-bordered"
+                      value={sellRate}
+                      onChange={(e) => setSellRate(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <div className="form-control">
-                  <label className="label font-semibold text-xs">Sell Rate (Price)</label>
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    placeholder="20.00" 
-                    className="input input-bordered"
-                    value={sellRate}
-                    onChange={(e) => setSellRate(e.target.value)}
-                    required
-                  />
-                </div>
+
+                {/* Real-time Profit Margin Badge */}
+                {(buyNum > 0 || sellNum > 0) && (
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-semibold ${profitVal < 0 ? 'bg-error/10 border-error/30 text-error' : Number(marginPercent) >= 20 ? 'bg-success/10 border-success/30 text-success' : 'bg-warning/10 border-warning/30 text-warning'}`}>
+                    <div className="flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 shrink-0" />
+                      <span>AI Profit Margin Recommendation:</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <span className="text-sm">{marginPercent}%</span>
+                      <span className="text-[11px] opacity-80">(+KSh {profitVal > 0 ? profitVal.toFixed(2) : '0.00'})</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Initial Qty & AI Reorder Level */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="form-control">
-                  <label className="label font-semibold text-xs">Initial Qty</label>
+                  <label className="label font-semibold text-xs py-1">
+                    Initial Stock Qty <span className="text-error">*</span>
+                  </label>
                   <input 
                     type="number" 
-                    placeholder="100" 
+                    placeholder="50" 
                     className="input input-bordered"
                     value={qty}
                     onChange={(e) => setQty(e.target.value)}
                     required
                   />
                 </div>
+
                 <div className="form-control">
-                  <label className="label font-semibold text-xs">Reorder Threshold</label>
+                  <label className="label font-semibold text-xs py-1 flex justify-between">
+                    <span>Reorder Level</span>
+                    {aiSuggestedFields.includes('reorderThreshold') && (
+                      <span className="badge badge-accent badge-xs text-[10px]">AI Level</span>
+                    )}
+                  </label>
                   <input 
                     type="number" 
                     placeholder="10" 
                     className="input input-bordered"
                     value={reorderThreshold}
                     onChange={(e) => setReorderThreshold(e.target.value)}
-                    required
                   />
                 </div>
               </div>
 
+              {/* Image URL / Preview */}
               <div className="form-control">
-                <label className="label font-semibold text-xs">Product Details</label>
+                <label className="label font-semibold text-xs py-1">Image URL / Preview</label>
+                <div className="flex gap-2 items-center">
+                  <input 
+                    type="text" 
+                    placeholder="https://... or auto-extracted image" 
+                    className="input input-bordered flex-1 text-xs"
+                    value={imageGoodId}
+                    onChange={(e) => setImageGoodId(e.target.value)}
+                  />
+                  {imageGoodId && (
+                    <div className="w-9 h-9 rounded-lg border border-base-300 overflow-hidden shrink-0 bg-base-200 flex items-center justify-center">
+                      <img src={imageGoodId} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Product Description */}
+              <div className="form-control">
+                <label className="label font-semibold text-xs py-1 flex justify-between">
+                  <span>Description</span>
+                  {aiSuggestedFields.includes('description') && (
+                    <span className="badge badge-accent badge-xs text-[10px]">AI</span>
+                  )}
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="Short description..." 
+                  className="input input-bordered"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              {/* Specifications & Product Details */}
+              <div className="form-control">
+                <label className="label font-semibold text-xs py-1 flex justify-between">
+                  <span>Product Details & Spec using ai</span>
+                  {aiSuggestedFields.includes('productDetails') && (
+                    <span className="badge badge-accent badge-xs text-[10px]">AI</span>
+                  )}
+                </label>
                 <textarea 
-                  placeholder="Extra details, size, color, brand..." 
-                  className="textarea textarea-bordered h-16"
+                  placeholder="Color, weight, dimensions, packaging details..." 
+                  className="textarea textarea-bordered h-16 text-xs"
                   value={productDetails}
                   onChange={(e) => setProductDetails(e.target.value)}
                 ></textarea>
               </div>
 
-              <div className="modal-action">
+              <div className="modal-action border-t border-base-200 pt-3">
                 <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={addGoodMutation.isPending || updateGoodMutation.isPending}>
-                  {editGoodId ? 'Save Changes' : 'Create Product'}
+                <button 
+                  type="submit" 
+                  className="btn btn-primary font-bold px-6" 
+                  disabled={addGoodMutation.isPending || updateGoodMutation.isPending || isAiProcessing}
+                >
+                  {(addGoodMutation.isPending || updateGoodMutation.isPending) ? (
+                    <span className="loading loading-spinner loading-xs"></span>
+                  ) : editGoodId ? (
+                    'Save Changes'
+                  ) : (
+                    'Save Product'
+                  )}
                 </button>
               </div>
             </form>
           </div>
         </div>
+        );
+      })()}
+
+      {showScanner && (
+        <CameraScanner 
+          onClose={() => setShowScanner(false)} 
+          onResult={handleScanResult} 
+        />
       )}
       {/* Add Category Modal */}
       {isCatModalOpen && (

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck, Lock } from 'lucide-react';
+import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck, Lock, MapPin, Navigation } from 'lucide-react';
 import { UserHeader } from '../components/UserHeader';
+import DeliveryMap from '../components/DeliveryMap';
+import AddressLocatorModal from '../components/AddressLocatorModal';
 
 const ORDER_STATUSES = ['Pending', 'Paid', 'Processing', 'Packed', 'Shipped', 'Delivered'];
 
@@ -30,6 +32,7 @@ const Orders = () => {
   const [activeTab, setActiveTab] = useState<'sales' | 'purchases'>('sales');
   const [receivingPurchase, setReceivingPurchase] = useState<any | null>(null);
   const [verifiedQty, setVerifiedQty] = useState<number>(0);
+  const [isAddressLocatorOpen, setIsAddressLocatorOpen] = useState(false);
 
   // Lock Screen
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -343,9 +346,73 @@ const Orders = () => {
                     </div>
                     {selectedOrder.customer?.phone && <div className="text-xs text-base-content/70 ml-5">{selectedOrder.customer.phone}</div>}
                     {selectedOrder.customer?.email && <div className="text-xs text-base-content/70 ml-5">{selectedOrder.customer.email}</div>}
-                    {selectedOrder.customer?.address && <div className="text-xs text-base-content/75 mt-1 ml-5 italic">{selectedOrder.customer.address}</div>}
+
+                    {/* Clickable address → opens map */}
+                    {selectedOrder.customer?.address && (
+                      <button
+                        type="button"
+                        className="flex items-start gap-1.5 mt-1.5 ml-5 text-left group w-full"
+                        onClick={() => setIsAddressLocatorOpen(true)}
+                        title="Click to view on map"
+                      >
+                        <MapPin size={11} className="text-primary mt-0.5 shrink-0 group-hover:scale-125 transition-transform" />
+                        <span className="text-xs text-primary/80 italic leading-snug underline underline-offset-2 decoration-dashed group-hover:text-primary transition-colors">
+                          {selectedOrder.customer.address}
+                        </span>
+                      </button>
+                    )}
                   </div>
+
+                  {/* Live Delivery Location Map */}
+                  {selectedOrder.deliveryLat && selectedOrder.deliveryLng ? (
+                    <div className="mt-3 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Navigation size={11} className="text-primary" />
+                          <span className="text-[10px] font-bold text-base-content/60 uppercase tracking-wider">Pinned Delivery Location</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-xs btn-outline gap-1 text-[10px] h-6 min-h-0 px-2"
+                          onClick={() => setIsAddressLocatorOpen(true)}
+                        >
+                          <MapPin size={10} />
+                          Locate
+                        </button>
+                      </div>
+                      <DeliveryMap
+                        lat={selectedOrder.deliveryLat}
+                        lng={selectedOrder.deliveryLng}
+                        address={selectedOrder.customer?.address}
+                      />
+                      <p className="text-[10px] font-mono text-base-content/35 text-right">
+                        {Number(selectedOrder.deliveryLat).toFixed(6)}, {Number(selectedOrder.deliveryLng).toFixed(6)}
+                      </p>
+                    </div>
+                  ) : (
+                    selectedOrder.customer?.address && (
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 mt-2 p-2 bg-base-200/80 rounded-lg border border-base-200 w-full hover:bg-primary/10 hover:border-primary/30 transition-all group"
+                        onClick={() => setIsAddressLocatorOpen(true)}
+                        title="Click to geocode and view on map"
+                      >
+                        <MapPin size={12} className="text-primary/60 shrink-0 group-hover:text-primary transition-colors" />
+                        <span className="text-[10px] text-base-content/60 group-hover:text-primary transition-colors">Click to locate on map →</span>
+                      </button>
+                    )
+                  )}
                 </div>
+
+                {/* Address Locator Modal */}
+                <AddressLocatorModal
+                  isOpen={isAddressLocatorOpen}
+                  onClose={() => setIsAddressLocatorOpen(false)}
+                  address={selectedOrder.customer?.address || ''}
+                  lat={selectedOrder.deliveryLat ?? null}
+                  lng={selectedOrder.deliveryLng ?? null}
+                  customerName={selectedOrder.customer?.name}
+                />
 
                 {/* Progress Stepper */}
                 <div className="space-y-4">

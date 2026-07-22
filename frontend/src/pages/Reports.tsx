@@ -1,11 +1,39 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
-import { BarChart3, TrendingUp, AlertTriangle, Clock, Award, Activity, Package, DollarSign, ArrowUpRight, ShoppingCart, Download } from 'lucide-react';
+import { BarChart3, TrendingUp, AlertTriangle, Clock, Award, Activity, Package, DollarSign, ArrowUpRight, ShoppingCart, Download, MessageSquare, Sparkles, Brain, Send } from 'lucide-react';
 import { downloadCSV } from '../utils/csvExport';
 
 const Reports = () => {
   const [activeTab, setActiveTab] = useState<'sales' | 'stock' | 'suppliers' | 'forecasting' | 'warehouse'>('sales');
+  
+  // OICS Assistant BI State
+  const [aiChatInput, setAiChatInput] = useState('');
+  const [aiChatHistory, setAiChatHistory] = useState<{ role: 'user' | 'ai'; text: string }[]>([
+    { role: 'ai', text: 'Hello! I am your OICS Assistant for Business Intelligence. Ask me anything about sales performance, stock runways, supplier scores, or demand forecasting.' }
+  ]);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [showAiConsole, setShowAiConsole] = useState(false);
+
+  const handleAiBIQuery = async (queryText: string) => {
+    if (isAiLoading) return;
+    setShowAiConsole(true);
+    setAiChatHistory(prev => [...prev, { role: 'user', text: queryText }]);
+    setIsAiLoading(true);
+
+    try {
+      const res = await api.post('/ai/chat', { question: queryText });
+      if (res.data && res.data.answer) {
+        setAiChatHistory(prev => [...prev, { role: 'ai', text: res.data.answer }]);
+      } else {
+        setAiChatHistory(prev => [...prev, { role: 'ai', text: 'Sorry, I did not receive a valid BI analysis.' }]);
+      }
+    } catch (err: any) {
+      setAiChatHistory(prev => [...prev, { role: 'ai', text: 'Error connecting to OICS Assistant BI service.' }]);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   // Fetch sales
   const { data: sales = [], isLoading: salesLoading } = useQuery({
@@ -137,47 +165,158 @@ const Reports = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold text-base-content flex items-center gap-2">
-            <BarChart3 className="text-primary" size={32} />
-            <span>Reports & Business Intelligence</span>
+            <Brain className="text-primary animate-pulse" size={32} />
+            <span>OICS Assistant — AI Intelligence Center</span>
           </h2>
           <p className="text-base-content/70 mt-1">
-            Core sales analytics, supplier performance evaluations, and predictive inventory forecasting.
+            Autonomous AI analytics, predictive demand forecasting, stock depletion runways, and supplier evaluations powered by OICS Assistant.
           </p>
         </div>
 
-        {/* Tab switchers */}
+        {/* AI Tab switchers */}
         <div className="tabs tabs-boxed bg-base-200/60 p-1 border border-base-200 rounded-xl max-w-lg shrink-0">
           <button 
             className={`tab font-bold text-xs rounded-lg py-2 transition-all ${activeTab === 'sales' ? 'tab-active bg-primary text-primary-content shadow-sm' : 'text-base-content/70 hover:text-base-content'}`}
             onClick={() => setActiveTab('sales')}
           >
-            Sales Reports
+            AI Sales Analytics
           </button>
           <button 
             className={`tab font-bold text-xs rounded-lg py-2 transition-all ${activeTab === 'stock' ? 'tab-active bg-primary text-primary-content shadow-sm' : 'text-base-content/70 hover:text-base-content'}`}
             onClick={() => setActiveTab('stock')}
           >
-            Stock Prediction
+            AI Stock Runway
           </button>
           <button 
             className={`tab font-bold text-xs rounded-lg py-2 transition-all ${activeTab === 'suppliers' ? 'tab-active bg-primary text-primary-content shadow-sm' : 'text-base-content/70 hover:text-base-content'}`}
             onClick={() => setActiveTab('suppliers')}
           >
-            Supplier Rankings
+            AI Supplier Scorecard
           </button>
           <button 
             className={`tab font-bold text-xs rounded-lg py-2 transition-all ${activeTab === 'forecasting' ? 'tab-active bg-primary text-primary-content shadow-sm' : 'text-base-content/70 hover:text-base-content'}`}
             onClick={() => setActiveTab('forecasting')}
           >
-            Demand Forecasts
+            AI Demand Forecasts
           </button>
           <button 
             className={`tab font-bold text-xs rounded-lg py-2 transition-all ${activeTab === 'warehouse' ? 'tab-active bg-primary text-primary-content shadow-sm' : 'text-base-content/70 hover:text-base-content'}`}
             onClick={() => setActiveTab('warehouse')}
           >
-            Warehouse Analytics
+            AI Warehouse Feed
           </button>
         </div>
+      </div>
+
+      {/* OICS Assistant BI Integration Banner */}
+      <div className="bg-base-100 rounded-2xl shadow-sm border border-base-200 p-6">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+              <Brain size={28} className="animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold text-base-content">OICS Assistant — Business Intelligence</h3>
+                <span className="badge badge-primary text-xs font-mono">AI Powered</span>
+              </div>
+              <p className="text-xs text-base-content/70 mt-0.5">
+                Let OICS Assistant automatically analyze your sales trends, stock depletion rates, supplier risk, and demand forecasts.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleAiBIQuery("Show me total revenue and sales summary")}
+              className="btn btn-sm btn-primary gap-1 font-semibold"
+            >
+              <Sparkles size={14} /> Analyze Sales
+            </button>
+            <button
+              onClick={() => handleAiBIQuery("Which products are running low on stock?")}
+              className="btn btn-sm btn-outline btn-primary gap-1"
+            >
+              ⚠️ Stock Runway
+            </button>
+            <button
+              onClick={() => handleAiBIQuery("What are the profit margins for our items?")}
+              className="btn btn-sm btn-outline btn-primary gap-1"
+            >
+              💰 Profit Health
+            </button>
+            <button
+              onClick={() => setShowAiConsole(!showAiConsole)}
+              className="btn btn-sm btn-ghost gap-1"
+            >
+              <MessageSquare size={14} /> {showAiConsole ? 'Hide AI Console' : 'Open OICS Console'}
+            </button>
+          </div>
+        </div>
+
+        {/* OICS Assistant BI Console (Expandable) */}
+        {showAiConsole && (
+          <div className="mt-6 pt-6 border-t border-base-200 space-y-4 animate-in fade-in duration-300">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold flex items-center gap-2 text-primary">
+                <Sparkles size={16} /> OICS Assistant BI Insights Console
+              </h4>
+              <span className="text-[11px] text-base-content/50 font-mono">Live Business Intelligence Mode</span>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto space-y-3 p-3 bg-base-200/40 rounded-xl border border-base-200">
+              {aiChatHistory.map((msg, idx) => (
+                <div key={idx} className={`chat ${msg.role === 'user' ? 'chat-end' : 'chat-start'}`}>
+                  <div className="chat-image avatar">
+                    <div className="w-7 h-7 rounded-full bg-base-200 flex items-center justify-center text-sm">
+                      {msg.role === 'user' ? '👤' : '🤖'}
+                    </div>
+                  </div>
+                  <div className="chat-header text-[10px] opacity-50 mb-0.5">
+                    {msg.role === 'user' ? 'You' : 'OICS Assistant'}
+                  </div>
+                  <div className={`chat-bubble text-xs whitespace-pre-line ${msg.role === 'user' ? 'chat-bubble-primary' : 'chat-bubble-secondary bg-base-100 text-base-content'}`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              {isAiLoading && (
+                <div className="chat chat-start">
+                  <div className="chat-bubble chat-bubble-secondary bg-base-100 flex items-center gap-2 text-xs">
+                    <span className="loading loading-dots loading-xs"></span> OICS Assistant is analyzing BI data...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!aiChatInput.trim()) return;
+                const txt = aiChatInput;
+                setAiChatInput('');
+                handleAiBIQuery(txt);
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                placeholder="Ask OICS Assistant to analyze any metric (e.g. 'Evaluate supplier reliability' or 'Best selling items')..."
+                className="input input-sm input-bordered flex-1 focus:outline-none focus:border-primary"
+                value={aiChatInput}
+                onChange={(e) => setAiChatInput(e.target.value)}
+                disabled={isAiLoading}
+              />
+              <button
+                type="submit"
+                className="btn btn-sm btn-primary"
+                disabled={isAiLoading || !aiChatInput.trim()}
+              >
+                <Send size={14} /> Ask BI AI
+              </button>
+            </form>
+          </div>
+        )}
       </div>
 
       {/* Main Panel content based on activeTab */}
