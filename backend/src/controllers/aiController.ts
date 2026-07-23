@@ -1048,7 +1048,7 @@ export const sendEmailReport = async (req: any, res: any) => {
       return res.status(503).json({
         success: false,
         sent_to: [],
-        message: "AI service is offline. Start the Python service on port 8000 first.",
+        message: "AI service is offline. Start the Python service on port 18000 first.",
       });
     }
     return res.status(500).json({ error: error.message });
