@@ -2,7 +2,7 @@ import { db } from "../db";
 import { aiInsights, recommendations, supplierBids, suppliers, goods } from "../db/schema";
 import { eq } from "drizzle-orm";
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
 
 export class AIService {
   static async getDemandForecast(productId: string, historicalSales: number[]) {
