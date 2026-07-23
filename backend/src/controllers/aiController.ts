@@ -5,7 +5,7 @@ import { eq, desc, and, ne, or, lte, sql } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
 import { AIService } from "../services/aiService";
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://127.0.0.1:18000";
+const AI_SERVICE_URL = "http://127.0.0.1:18000";
 
 // Get all AI Insights
 export const getAIInsights = async (req: Request, res: Response) => {

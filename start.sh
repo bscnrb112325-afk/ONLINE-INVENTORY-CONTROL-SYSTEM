@@ -4,7 +4,7 @@ npm run db:push --prefix backend
 
 # 2. Start the Python AI service in the background on port 18000
 cd ai_service
-python -m uvicorn main:app --host 127.0.0.1 --port 18000 &
+python -m uvicorn main:app --host 0.0.0.0 --port 18000 &
 cd ..
 
 # 3. Start the Node.js backend (which binds to the port Sevalla provides)

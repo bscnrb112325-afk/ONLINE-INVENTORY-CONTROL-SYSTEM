@@ -135,7 +135,7 @@ export const createGood = async (req: Request, res: Response) => {
     // Trigger AI anomaly detection asynchronously
     setTimeout(async () => {
       try {
-        const aiServiceUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+        const aiServiceUrl = "http://127.0.0.1:18000";
         const aiRes = await fetch(`${aiServiceUrl}/detect-anomaly`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -213,7 +213,7 @@ export const updateGood = async (req: Request, res: Response) => {
     // Trigger AI anomaly detection asynchronously
     setTimeout(async () => {
       try {
-        const aiServiceUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+        const aiServiceUrl = "http://127.0.0.1:18000";
         const aiRes = await fetch(`${aiServiceUrl}/detect-anomaly`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
