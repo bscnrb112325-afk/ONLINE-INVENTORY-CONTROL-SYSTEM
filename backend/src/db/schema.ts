@@ -113,6 +113,10 @@ export const sales = pgTable("sales", {
   orderStatus: text("order_status").default("Pending").notNull(), // "Pending" -> "Paid" -> "Processing" -> "Packed" -> "Shipped" -> "Delivered"
   deliveryLat: doublePrecision("delivery_lat"),   // Customer GPS latitude (from ZuriShop map pin)
   deliveryLng: doublePrecision("delivery_lng"),   // Customer GPS longitude (from ZuriShop map pin)
+  deliverySignature: text("delivery_signature"),  // Base64 digital signature of customer
+  deliveryProofPhoto: text("delivery_proof_photo"),// Base64 camera snapshot / AI goods proof
+  deliveryNotes: text("delivery_notes"),          // Confirmation notes / recipient info
+  deliveryVerificationCode: text("delivery_verification_code"), // Unique 6-digit PIN sent via AI email for delivery verification
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

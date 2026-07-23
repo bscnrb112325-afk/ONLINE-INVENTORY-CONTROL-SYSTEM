@@ -37,6 +37,7 @@ router.get("/notifications", getNotifications);
 router.post("/notifications/:id/read", readNotification);
 router.get("/orders", getOrders);
 router.patch("/orders/:id/status", updateOrderStatus);
+router.post("/orders/:id/status", updateOrderStatus);
 router.post("/analyze-stock", analyzeStock);
 router.post("/send-to-suppliers", sendRecommendationsToSuppliers);
 router.post("/vision-scan", processVisionScan);

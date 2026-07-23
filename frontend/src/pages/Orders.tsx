@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck, Lock, MapPin, Navigation } from 'lucide-react';
+import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck, Lock, MapPin, Navigation, FileSignature, Camera, ShieldCheck, Key } from 'lucide-react';
 import { UserHeader } from '../components/UserHeader';
 import DeliveryMap from '../components/DeliveryMap';
 import AddressLocatorModal from '../components/AddressLocatorModal';
+import DeliveryProofModal from '../components/DeliveryProofModal';
 
 const ORDER_STATUSES = ['Pending', 'Paid', 'Processing', 'Packed', 'Shipped', 'Delivered'];
 
@@ -26,6 +27,18 @@ const STATUS_BADGES: Record<string, string> = {
   Delivered: 'badge-success text-success-content',
 };
 
+const getStatusBadgeClass = (status?: string) => {
+  if (!status) return 'badge-ghost';
+  const found = ORDER_STATUSES.find((s) => s.toLowerCase() === status.toLowerCase());
+  return STATUS_BADGES[found || 'Pending'] || 'badge-ghost';
+};
+
+const formatStatusLabel = (status?: string) => {
+  if (!status) return 'Pending';
+  const found = ORDER_STATUSES.find((s) => s.toLowerCase() === status.toLowerCase());
+  return found || (status.charAt(0).toUpperCase() + status.slice(1).toLowerCase());
+};
+
 const Orders = () => {
   const queryClient = useQueryClient();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -33,6 +46,7 @@ const Orders = () => {
   const [receivingPurchase, setReceivingPurchase] = useState<any | null>(null);
   const [verifiedQty, setVerifiedQty] = useState<number>(0);
   const [isAddressLocatorOpen, setIsAddressLocatorOpen] = useState(false);
+  const [isProofModalOpen, setIsProofModalOpen] = useState(false);
 
   // Lock Screen
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -103,11 +117,29 @@ const Orders = () => {
 
   // Mutation to update order status
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
-      await api.post(`/ai/orders/${orderId}/status`, { orderStatus: status });
+    mutationFn: async ({
+      orderId,
+      status,
+      deliverySignature,
+      deliveryProofPhoto,
+      deliveryNotes
+    }: {
+      orderId: string;
+      status: string;
+      deliverySignature?: string;
+      deliveryProofPhoto?: string;
+      deliveryNotes?: string;
+    }) => {
+      await api.post(`/ai/orders/${orderId}/status`, {
+        orderStatus: status,
+        deliverySignature,
+        deliveryProofPhoto,
+        deliveryNotes
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      setIsProofModalOpen(false);
     },
   });
 
@@ -293,8 +325,8 @@ const Orders = () => {
                             </span>
                           </td>
                           <td>
-                            <span className={`badge badge-sm font-medium ${STATUS_BADGES[(order.orderStatus || 'Pending').charAt(0).toUpperCase() + (order.orderStatus || 'Pending').slice(1)] || 'badge-ghost'}`}>
-                              {(order.orderStatus || 'Pending').charAt(0).toUpperCase() + (order.orderStatus || 'Pending').slice(1)}
+                            <span className={`badge badge-sm font-medium ${getStatusBadgeClass(order.orderStatus)}`}>
+                              {formatStatusLabel(order.orderStatus)}
                             </span>
                           </td>
                           <td>
@@ -331,8 +363,8 @@ const Orders = () => {
                       <span>{new Date(selectedOrder.createdAt).toLocaleString()}</span>
                     </div>
                   </div>
-                  <span className={`badge font-bold ${STATUS_BADGES[(selectedOrder.orderStatus || 'Pending').charAt(0).toUpperCase() + (selectedOrder.orderStatus || 'Pending').slice(1)] || 'badge-ghost'}`}>
-                    {(selectedOrder.orderStatus || 'Pending').charAt(0).toUpperCase() + (selectedOrder.orderStatus || 'Pending').slice(1)}
+                  <span className={`badge font-bold ${getStatusBadgeClass(selectedOrder.orderStatus)}`}>
+                    {formatStatusLabel(selectedOrder.orderStatus)}
                   </span>
                 </div>
 
@@ -420,9 +452,10 @@ const Orders = () => {
                   <ul className="steps steps-vertical w-full text-sm">
                     {ORDER_STATUSES.map((status, index) => {
                       const rawStatus = selectedOrder.orderStatus || 'Pending';
-                      const normalizedDbStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
-                      const currentStatusIndex = ORDER_STATUSES.indexOf(normalizedDbStatus);
-                      const isCompleted = index <= currentStatusIndex;
+                      const currentStatusIndex = ORDER_STATUSES.findIndex(
+                        (s) => s.toLowerCase() === rawStatus.toLowerCase()
+                      );
+                      const isCompleted = currentStatusIndex !== -1 && index <= currentStatusIndex;
                       return (
                         <li 
                           key={status} 
@@ -444,20 +477,105 @@ const Orders = () => {
                   <div className="flex flex-wrap gap-2">
                     {ORDER_STATUSES.map((status) => {
                       const rawStatus = selectedOrder.orderStatus || 'Pending';
-                      const normalizedDbStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+                      const isCurrent = rawStatus.toLowerCase() === status.toLowerCase();
                       return (
                       <button
                         key={status}
-                        className={`btn btn-xs ${normalizedDbStatus === status ? 'btn-primary' : 'btn-outline'}`}
+                        className={`btn btn-xs ${isCurrent ? 'btn-primary' : 'btn-outline'} ${status === 'Delivered' ? 'btn-success font-bold text-white' : ''}`}
                         disabled={updateStatusMutation.isPending}
-                        onClick={() => updateStatusMutation.mutate({ orderId: selectedOrder.id, status })}
+                        onClick={() => {
+                          if (status === 'Delivered') {
+                            setIsProofModalOpen(true);
+                          } else {
+                            updateStatusMutation.mutate({ orderId: selectedOrder.id, status });
+                          }
+                        }}
                       >
-                        {status}
+                        {status === 'Delivered' ? '📷 Sign & Deliver' : status}
                       </button>
                       );
                     })}
                   </div>
                 </div>
+
+                {/* Delivery Verification PIN Card */}
+                {selectedOrder.deliveryVerificationCode && (
+                  <div className="bg-warning/10 border border-warning/30 p-3.5 rounded-xl flex justify-between items-center animate-in fade-in duration-300">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold text-base-content/70 uppercase tracking-wider flex items-center gap-1.5">
+                        <Key size={13} className="text-warning" /> Delivery Verification PIN
+                      </span>
+                      <div className="text-[11px] text-base-content/70">
+                        Emailed to customer upon shipping for 1-click verification
+                      </div>
+                    </div>
+                    <div className="badge badge-warning font-mono font-bold text-sm tracking-widest px-3 py-2.5 shadow-xs">
+                      {selectedOrder.deliveryVerificationCode}
+                    </div>
+                  </div>
+                )}
+
+                {/* Proof of Delivery Card (Signature & Camera Photo) */}
+                {(selectedOrder.deliverySignature || selectedOrder.deliveryProofPhoto || selectedOrder.deliveryNotes || selectedOrder.orderStatus?.toLowerCase() === 'delivered') && (
+                  <div className="bg-base-200/50 p-4 rounded-xl space-y-3 border border-base-200/80 animate-in fade-in duration-300">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-xs font-bold text-base-content/60 uppercase tracking-wider flex items-center gap-1.5">
+                        <FileSignature size={14} className="text-primary" />
+                        <span>Proof of Delivery</span>
+                      </h4>
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-outline gap-1 text-[10px]"
+                        onClick={() => setIsProofModalOpen(true)}
+                      >
+                        <Camera size={11} />
+                        {selectedOrder.deliverySignature || selectedOrder.deliveryProofPhoto ? 'Update Proof' : 'Capture Proof'}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {selectedOrder.deliveryProofPhoto ? (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-base-content/50 uppercase">Goods Photo</span>
+                          <div className="border border-base-300 rounded-lg overflow-hidden bg-neutral h-24 flex items-center justify-center">
+                            <img src={selectedOrder.deliveryProofPhoto} alt="Goods Photo" className="w-full h-24 object-cover" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-base-content/50 uppercase">Goods Photo</span>
+                          <div className="border border-dashed border-base-300 rounded-lg h-24 flex flex-col items-center justify-center text-base-content/30 text-[10px] p-2 text-center">
+                            <Camera size={18} className="mb-1 opacity-50" />
+                            No photo attached
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedOrder.deliverySignature ? (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-base-content/50 uppercase">Customer Signature</span>
+                          <div className="border border-base-300 rounded-lg overflow-hidden bg-white h-24 flex items-center justify-center p-1">
+                            <img src={selectedOrder.deliverySignature} alt="Customer Signature" className="max-h-20 object-contain" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-base-content/50 uppercase">Customer Signature</span>
+                          <div className="border border-dashed border-base-300 rounded-lg h-24 flex flex-col items-center justify-center text-base-content/30 text-[10px] p-2 text-center">
+                            <FileSignature size={18} className="mb-1 opacity-50" />
+                            No signature captured
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedOrder.deliveryNotes && (
+                      <p className="text-xs text-base-content/75 italic bg-base-100 p-2 rounded-lg border border-base-200/60">
+                        "{selectedOrder.deliveryNotes}"
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Items List */}
                 <div className="border-t border-base-200 pt-4">
@@ -723,6 +841,25 @@ const Orders = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delivery Proof Verification Modal */}
+      {selectedOrder && (
+        <DeliveryProofModal
+          isOpen={isProofModalOpen}
+          onClose={() => setIsProofModalOpen(false)}
+          orderId={selectedOrder.id}
+          customerName={selectedOrder.customer?.name}
+          existingPin={selectedOrder.deliveryVerificationCode}
+          isSubmitting={updateStatusMutation.isPending}
+          onConfirm={(proof) => {
+            updateStatusMutation.mutate({
+              orderId: selectedOrder.id,
+              status: 'Delivered',
+              ...proof,
+            });
+          }}
+        />
       )}
     </div>
   );

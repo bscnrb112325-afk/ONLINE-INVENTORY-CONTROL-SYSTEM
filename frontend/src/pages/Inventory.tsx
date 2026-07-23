@@ -147,6 +147,10 @@ const Inventory = () => {
       resetForm();
       setAiSuggestedFields([]);
     },
+    onError: (error: any) => {
+      const msg = error.response?.data?.error || error.message || "Unknown error";
+      alert(`Failed to add product: ${msg}`);
+    }
   });
 
   // Mutator to update an existing item
@@ -177,6 +181,10 @@ const Inventory = () => {
       resetForm();
       setAiSuggestedFields([]);
     },
+    onError: (error: any) => {
+      const msg = error.response?.data?.error || error.message || "Unknown error";
+      alert(`Failed to update product: ${msg}`);
+    }
   });
 
   const deleteGoodMutation = useMutation({
@@ -416,9 +424,11 @@ const Inventory = () => {
         setEditGoodId('');
         setIsModalOpen(true);
       }
-    } catch (error) {
-      console.error('AI identification error', error);
-      alert('AI identification error. Please ensure backend and AI service are running.');
+    } catch (error: any) {
+      console.warn('AI identification warning:', error);
+      const errMsg = error.response?.data?.error || 'AI Vision scanner notice: Check backend & Python service.';
+      setValidationWarnings([errMsg]);
+      setIsModalOpen(true);
     } finally {
       setIsAiProcessing(false);
     }
@@ -490,7 +500,10 @@ const Inventory = () => {
 
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!serial || !subCatId || !buyRate || !sellRate || !qty || !name) return;
+    if (!serial || !subCatId || !buyRate || !sellRate || !qty || !name) {
+      alert("Please ensure all required fields (Item Name, Barcode SKU, Category, Cost, Price, Qty) are filled.");
+      return;
+    }
     
     const combinedDetails = brand 
       ? `Brand: ${brand}\n${productDetails}`

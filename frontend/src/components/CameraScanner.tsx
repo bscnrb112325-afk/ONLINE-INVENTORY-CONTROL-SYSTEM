@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/library';
-import { Camera, X } from 'lucide-react';
+import { Camera, X, RefreshCw, Upload, Video, Sparkles } from 'lucide-react';
 
 interface CameraScannerProps {
   onResult: (barcode: string | null, imageBase64: string | null) => void;
@@ -9,66 +9,65 @@ interface CameraScannerProps {
 
 export const CameraScanner: React.FC<CameraScannerProps> = ({ onResult, onClose }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>('');
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [isStartingStream, setIsStartingStream] = useState<boolean>(true);
 
-  useEffect(() => {
-    let isComponentMounted = true;
+  const startScanner = useCallback(async () => {
+    setIsStartingStream(true);
+    setError('');
     const codeReader = new BrowserMultiFormatReader();
 
-    const startScanner = async () => {
-      try {
-        // 1. Force permission prompt using native HTML5 API first
-        // This guarantees the browser asks for permission and unlocks the device list
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error("Camera API blocked by browser. You MUST use 'localhost' or an 'https://' link.");
-        }
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(track => track.stop());
-
-        // 2. Now that permissions are granted, safely read the full device list
-        const videoInputDevices = await codeReader.listVideoInputDevices();
-        if (isComponentMounted) {
-          setDevices(videoInputDevices);
-        }
-
-        // 3. Select a valid device ID (use selected, or fallback to the laptop webcam)
-        let deviceIdToUse = selectedDeviceId;
-        if (!deviceIdToUse && videoInputDevices.length > 0) {
-           // Explicitly try to find the laptop's built-in webcam
-           const laptopWebcam = videoInputDevices.find(d => {
-             const label = d.label.toLowerCase();
-             return label.includes('integrated') || 
-                    label.includes('front') || 
-                    label.includes('facetime') || 
-                    label.includes('webcam') || 
-                    label.includes('usb');
-           });
-           
-           deviceIdToUse = laptopWebcam ? laptopWebcam.deviceId : videoInputDevices[0].deviceId;
-        }
-
-        // 4. Start ZXing with a guaranteed valid device string
-        codeReader.decodeFromVideoDevice(deviceIdToUse || null, videoRef.current!, (result, err) => {
-          if (!isComponentMounted) return;
-          if (result) {
-            onResult(result.getText(), null);
-            codeReader.reset();
-          }
-        });
-      } catch (err: any) {
-        if (isComponentMounted) setError('Camera error: ' + err.message);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera API not allowed in this context. Use 'Snap Photo (Camera App)' or 'Upload Image'.");
       }
-    };
 
-    startScanner();
+      // First check permission / enumerate video devices
+      const videoInputDevices = await codeReader.listVideoInputDevices();
+      setDevices(videoInputDevices);
+
+      let deviceIdToUse = selectedDeviceId;
+      if (!deviceIdToUse && videoInputDevices.length > 0) {
+        const webcam = videoInputDevices.find(d => {
+          const label = d.label.toLowerCase();
+          return label.includes('integrated') || 
+                 label.includes('front') || 
+                 label.includes('facetime') || 
+                 label.includes('webcam') || 
+                 label.includes('usb');
+        });
+        deviceIdToUse = webcam ? webcam.deviceId : videoInputDevices[0].deviceId;
+      }
+
+      codeReader.decodeFromVideoDevice(deviceIdToUse || null, videoRef.current!, (result) => {
+        if (result) {
+          onResult(result.getText(), null);
+          codeReader.reset();
+        }
+      });
+      setIsStartingStream(false);
+    } catch (err: any) {
+      console.warn("CameraScanner error:", err);
+      setError("Live video feed unavailable. Use native camera app or image upload below.");
+      setIsStartingStream(false);
+    }
 
     return () => {
-      isComponentMounted = false;
       codeReader.reset();
     };
   }, [selectedDeviceId, onResult]);
+
+  useEffect(() => {
+    let cleanup: any;
+    startScanner().then(c => { cleanup = c; });
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [startScanner]);
 
   const handleManualCapture = () => {
     if (videoRef.current) {
@@ -78,33 +77,49 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onResult, onClose 
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        const base64 = canvas.toDataURL('image/jpeg');
+        const base64 = canvas.toDataURL('image/jpeg', 0.85);
         onResult(null, base64);
       }
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        onResult(null, event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
-    <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
-      <div className="bg-base-100 rounded-xl overflow-hidden shadow-2xl max-w-md w-full relative flex flex-col">
-        <div className="flex justify-between items-center p-4 bg-base-200">
-          <h3 className="font-bold flex items-center gap-2">
-            <Camera className="w-5 h-5" />
-            AI Vision Scanner
+    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-base-100 rounded-2xl overflow-hidden shadow-2xl max-w-md w-full relative flex flex-col border border-base-200">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center px-4 py-3 bg-base-200/80 border-b border-base-300">
+          <h3 className="font-bold text-sm flex items-center gap-2 text-base-content">
+            <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+            <span>AI Product & Barcode Vision Scanner</span>
           </h3>
-          <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle">
+          <button onClick={onClose} className="btn btn-ghost btn-xs btn-circle text-base-content/60 hover:text-base-content">
             <X className="w-4 h-4" />
           </button>
         </div>
         
-        {devices.length > 0 && (
-          <div className="p-2 bg-base-200 border-t border-base-300 flex justify-center">
+        {/* Device Switcher Dropdown */}
+        {devices.length > 1 && (
+          <div className="p-2 bg-base-200/50 border-b border-base-300 flex items-center gap-2 px-4">
+            <Video size={14} className="text-primary shrink-0" />
             <select 
-              className="select select-sm select-bordered w-full max-w-xs"
+              className="select select-xs select-bordered w-full text-xs"
               value={selectedDeviceId}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
             >
-              <option value="">Auto (Default Camera)</option>
+              <option value="">Default Laptop Camera</option>
               {devices.map((d, idx) => (
                 <option key={d.deviceId || idx} value={d.deviceId}>
                   {d.label || `Camera ${idx + 1}`}
@@ -114,27 +129,71 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onResult, onClose 
           </div>
         )}
 
-        <div className="relative bg-black aspect-video flex items-center justify-center">
-          {error ? (
-            <p className="text-error p-4 text-center">{error}</p>
-          ) : (
-            <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted></video>
+        {/* Video Preview Container */}
+        <div className="relative bg-neutral aspect-video flex items-center justify-center overflow-hidden">
+          <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted></video>
+
+          {error && (
+            <div className="absolute inset-0 bg-neutral/95 flex flex-col items-center justify-center p-4 text-center space-y-2">
+              <p className="text-xs text-neutral-content/80 max-w-xs">{error}</p>
+              <button
+                type="button"
+                className="btn btn-xs btn-outline btn-primary gap-1"
+                onClick={startScanner}
+              >
+                <RefreshCw size={12} /> Retry Camera Feed
+              </button>
+            </div>
           )}
-          <div className="absolute inset-0 border-2 border-primary opacity-50 m-8 rounded-lg pointer-events-none"></div>
+
+          {!error && (
+            <div className="absolute inset-0 border-2 border-primary/50 m-6 rounded-xl pointer-events-none flex items-center justify-center">
+              <div className="text-[10px] text-white/70 bg-black/60 px-2 py-0.5 rounded-full font-mono">
+                Position Barcode or Product inside frame
+              </div>
+            </div>
+          )}
         </div>
-        <div className="p-4 text-center flex flex-col gap-3">
-          <div className="text-sm text-base-content/70">
-            Scanning for barcode... Or capture manually for AI Vision.
-          </div>
+
+        {/* Actions Footer */}
+        <div className="p-4 space-y-2.5 bg-base-100">
           <button 
             type="button" 
-            className="btn btn-primary w-full"
+            className="btn btn-primary btn-sm w-full font-bold gap-2 text-xs shadow-md"
             onClick={handleManualCapture}
           >
             <Camera className="w-4 h-4" />
-            Capture Image for AI
+            Snap Photo for AI Identification
           </button>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="btn btn-secondary btn-outline btn-xs gap-1.5 font-bold cursor-pointer">
+              <Camera className="w-3.5 h-3.5" />
+              Camera App
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+
+            <label className="btn btn-outline btn-xs gap-1.5 font-bold cursor-pointer">
+              <Upload className="w-3.5 h-3.5" />
+              Upload Image
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+          </div>
         </div>
+
       </div>
     </div>
   );

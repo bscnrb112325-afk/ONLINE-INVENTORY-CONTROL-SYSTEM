@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import random
 import os
+import time
 import json
 import base64
 from datetime import datetime, date
@@ -226,6 +227,7 @@ def suggest_supplier(data: SupplierRecommendationRequest):
 class VisionRequest(BaseModel):
     image_base64: Optional[str] = ""
     barcode: Optional[str] = ""
+    context: Optional[str] = "" # "delivery", "inventory", etc.
 
 class VisionResponse(BaseModel):
     name: str
@@ -259,23 +261,47 @@ def recognize_product(data: VisionRequest):
     try:
         client = genai.Client(api_key=api_key)
         
-        prompt = """
-        Examine this product image carefully to capture actual details for inventory entry:
-        Provide a JSON response with the following exact keys:
-        - "name": Item Name. The exact or most accurate product name, title, flavor, model, or variant visible on the package (e.g., "Coca-Cola Original Taste 500ml", "Logitech MX Master 3S Wireless Mouse").
-        - "brand": Brand Name. The exact brand or manufacturer name visible on the product label or logo (e.g., "Coca-Cola", "Logitech", "Samsung", "Nestle").
-        - "category": Category. A broad category for the item (e.g., "Beverages", "Electronics", "Groceries", "Snacks", "Personal Care", "Hardware", "Apparel").
-        - "description": Short description. A clear, informative 1-2 sentence description of the product based on what is shown.
-        - "serial": Barcode SKU. Extract the exact barcode number, EAN/UPC, serial number, or model number visible on the package. If no barcode is visible, generate a clean SKU in the format "SKU-XXXXXX".
-        - "buy_rate": Buy Rate / Cost (KSh). Estimate a realistic wholesale cost / buy rate in KSh for this item (floating point number > 0).
-        - "sell_rate": Sell Rate / Price (KSh). Estimate a realistic retail selling price in KSh for this item (floating point number > buy_rate).
-        - "profit_margin": Recommended profit margin percentage as a number (e.g. 35.0).
-        - "qty": Initial Stock Qty. Estimate a reasonable initial stock quantity (integer between 20 and 100).
-        - "reorder_threshold": Reorder Level. Recommended reorder level threshold (integer between 5 and 20).
-        - "supplier_suggestion": Recommended supplier, distributor, or manufacturer name for this brand line.
-        - "product_details": Product Details & Spec using ai. Detailed technical specifications extracted from label: net weight/volume, ingredients/materials, model number, color, packaging type, warranty, dimensions.
-        Return ONLY valid JSON matching this schema without markdown code blocks.
-        """
+        if data.context == "delivery":
+            prompt = """
+            Examine this Proof of Delivery photo carefully to verify delivered goods/package:
+            Provide a JSON response with the following exact keys:
+            - "name": Exact or best identified delivered product, package box, or item name (e.g. "Delivered Package - Goods Received", "Electronics Box", or exact product name visible on package). Avoid background signs or unrelated wall posters.
+            - "brand": Brand or manufacturer visible on box/item, or "Verified Delivery".
+            - "category": "Delivered Goods".
+            - "description": A clear 1-2 sentence visual summary of the delivered items, package condition, and visual reception proof shown in the photo.
+            - "serial": Model number, barcode, or tracking SKU visible on package (or "POD-VERIFIED").
+            - "buy_rate": 0.0
+            - "sell_rate": 0.0
+            - "profit_margin": 0.0
+            - "qty": 1
+            - "reorder_threshold": 0
+            - "supplier_suggestion": "Logistics Dispatch Hub"
+            - "product_details": "Visual Condition: Intact, Delivery Status: Verified by AI Vision"
+            - "confidence": 0.95
+            Return ONLY valid JSON matching this schema without markdown code blocks.
+            """
+        else:
+            prompt = """
+            Examine this product image carefully to capture actual details for inventory entry:
+            Provide a JSON response with the following exact keys:
+            - "name": Item Name. The exact or most accurate product name, title, flavor, model, or variant visible on the package (e.g., "Coca-Cola Original Taste 500ml", "Logitech MX Master 3S Wireless Mouse").
+            - "brand": Brand Name. The exact brand or manufacturer name visible on the product label or logo (e.g., "Coca-Cola", "Logitech", "Samsung", "Nestle").
+            - "category": Category. A broad category for the item (e.g., "Beverages", "Electronics", "Groceries", "Snacks", "Personal Care", "Hardware", "Apparel").
+            - "description": Short description. A clear, informative 1-2 sentence description of the product based on what is shown.
+            - "serial": Barcode SKU. Extract the exact barcode number, EAN/UPC, serial number, or model number visible on the package. If no barcode is visible, generate a clean SKU in the format "SKU-XXXXXX".
+            - "buy_rate": Buy Rate / Cost (KSh). Estimate a realistic wholesale cost / buy rate in KSh for this item (floating point number > 0).
+            - "sell_rate": Sell Rate / Price (KSh). Estimate a realistic retail selling price in KSh for this item (floating point number > buy_rate).
+            - "profit_margin": Recommended profit margin percentage as a number (e.g. 35.0).
+            - "qty": Initial Stock Qty. Estimate a reasonable initial stock quantity (integer between 20 and 100).
+            - "reorder_threshold": Reorder Level. Recommended reorder level threshold (integer between 5 and 20).
+            - "supplier_suggestion": Recommended supplier, distributor, or manufacturer name for this brand line.
+            - "product_details": Product Details & Spec using ai. Detailed technical specifications extracted from label: net weight/volume, ingredients/materials, model number, color, packaging type, warranty, dimensions.
+            Return ONLY valid JSON matching this schema without markdown code blocks.
+            """
+
+        models_to_try = ['gemini-flash-latest', 'gemini-2.0-flash']
+        response = None
+        last_error = None
 
         if data.image_base64:
             b64_data = data.image_base64
@@ -290,26 +316,44 @@ def recognize_product(data: VisionRequest):
                     mime_type = "image/gif"
                 
             image_bytes = base64.b64decode(b64_data)
-            
-            response = client.models.generate_content(
-                model='gemini-flash-latest',
-                contents=[
-                    prompt,
-                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-                ],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                )
-            )
+            contents = [
+                prompt,
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+            ]
+
+            for m in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=m,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                        )
+                    )
+                    if response and response.text:
+                        break
+                except Exception as ex:
+                    last_error = ex
+                    time.sleep(0.5)
+
         elif data.barcode:
             barcode_prompt = f"{prompt}\nProduct Barcode / SKU number: {data.barcode}"
-            response = client.models.generate_content(
-                model='gemini-flash-latest',
-                contents=[barcode_prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                )
-            )
+            contents = [barcode_prompt]
+
+            for m in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=m,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                        )
+                    )
+                    if response and response.text:
+                        break
+                except Exception as ex:
+                    last_error = ex
+                    time.sleep(0.5)
         else:
             return VisionResponse(
                 name="No input provided",
@@ -317,6 +361,11 @@ def recognize_product(data: VisionRequest):
                 description="Please provide either an image or barcode.",
                 confidence=0.0
             )
+
+        if not response or not response.text:
+            if last_error:
+                raise last_error
+            raise RuntimeError("Empty response from Gemini Vision API")
         
         result_text = response.text
         if result_text.startswith("```json"):
@@ -875,6 +924,96 @@ async def trigger_email_report(req: EmailReportRequest = EmailReportRequest()):
         message=msg,
         report_preview=report_text[:800] + "..." if len(report_text) > 800 else report_text,
     )
+
+
+class ShippedNotificationRequest(BaseModel):
+    customer_name: Optional[str] = "Customer"
+    customer_email: Optional[str] = ""
+    order_id: str
+    verification_code: str
+    item_summary: Optional[str] = ""
+
+@app.post("/email/send-shipped-notification")
+async def send_shipped_notification(req: ShippedNotificationRequest):
+    """
+    Compose and send AI email to customer with unique delivery PIN code when order is shipped.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    email_body = ""
+
+    if api_key:
+        try:
+            client = genai.Client(api_key=api_key)
+            prompt = f"""
+            Compose a professional, friendly, and clear order shipment email to a customer.
+            Customer Name: {req.customer_name}
+            Order ID: #{req.order_id[:8].upper()}
+            Unique Delivery Verification Code (PIN): {req.verification_code}
+            Order Details: {req.item_summary or 'General Goods Shipment'}
+
+            Requirements:
+            - Inform customer that their order has been SHIPPED.
+            - Explicitly state their 6-digit Delivery Verification PIN Code ({req.verification_code}).
+            - Remind them to show/provide this 6-digit PIN code to the delivery driver to verify and sign for their package.
+            - Keep tone polite, modern, and engaging.
+            """
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=[prompt]
+            )
+            email_body = response.text
+        except Exception as e:
+            print(f"[AI Email Compose Error]: {e}")
+
+    if not email_body:
+        email_body = f"""Dear {req.customer_name},
+
+Great news! Your order #{req.order_id[:8].upper()} is officially SHIPPED and on its way to you!
+
+🔑 YOUR UNIQUE DELIVERY VERIFICATION CODE: {req.verification_code}
+
+Please present this 6-digit PIN code to our delivery driver upon arrival to verify and sign for your delivered goods.
+
+Thank you for shopping with Online Inventory Control System!
+"""
+
+    server   = os.getenv("SMTP_SERVER", "")
+    port_str = os.getenv("SMTP_PORT", "587")
+    user     = os.getenv("SMTP_USER", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+
+    recipient = req.customer_email or os.getenv("EMAIL_RECIPIENTS", "")
+    sent_status = False
+
+    if server and user and password and "your_" not in user and recipient:
+        try:
+            port = int(port_str)
+        except ValueError:
+            port = 587
+        
+        for r in [x.strip() for x in recipient.split(",") if x.strip()]:
+            try:
+                msg = MIMEMultipart()
+                msg['From'] = user
+                msg['To'] = r
+                msg['Subject'] = f"🚚 Order #{req.order_id[:8].upper()} Shipped! Your Delivery PIN Code: {req.verification_code}"
+                msg.attach(MIMEText(email_body, 'plain', 'utf-8'))
+                
+                with smtplib.SMTP(server, port) as smtp:
+                    smtp.starttls()
+                    smtp.login(user, password)
+                    smtp.send_message(msg)
+                sent_status = True
+            except Exception as e:
+                print(f"[Email Error] Failed sending to {r}: {e}")
+
+    return {
+        "success": True,
+        "email_sent": sent_status,
+        "verification_code": req.verification_code,
+        "email_preview": email_body[:300] + "...",
+        "message": f"Shipped notification & PIN code {req.verification_code} generated successfully."
+    }
 
 
 @app.get("/email/config")
