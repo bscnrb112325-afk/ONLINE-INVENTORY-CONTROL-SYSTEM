@@ -633,7 +633,8 @@ def detect_anomaly(req: AnomalyRequest):
 # Email Daily Business Reports
 # ═══════════════════════════════════════════════════════════════════════════════
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:3000")
+port = os.getenv("PORT", "3000")
+BACKEND_URL = os.getenv("BACKEND_URL", f"http://127.0.0.1:{port}")
 
 
 class EmailReportRequest(BaseModel):
