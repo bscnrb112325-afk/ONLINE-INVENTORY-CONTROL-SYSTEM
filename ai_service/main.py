@@ -299,7 +299,7 @@ def recognize_product(data: VisionRequest):
             Return ONLY valid JSON matching this schema without markdown code blocks.
             """
 
-        models_to_try = ['gemini-flash-latest', 'gemini-2.0-flash']
+        models_to_try = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash']
         response = None
         last_error = None
 
@@ -958,11 +958,18 @@ async def send_shipped_notification(req: ShippedNotificationRequest):
             - Remind them to show/provide this 6-digit PIN code to the delivery driver to verify and sign for their package.
             - Keep tone polite, modern, and engaging.
             """
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=[prompt]
-            )
-            email_body = response.text
+            models_to_try = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash']
+            for m in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=m,
+                        contents=[prompt]
+                    )
+                    if response and response.text:
+                        email_body = response.text
+                        break
+                except Exception as ex:
+                    print(f"[AI Email Compose Error] model {m}: {ex}")
         except Exception as e:
             print(f"[AI Email Compose Error]: {e}")
 
@@ -1130,11 +1137,23 @@ def calculate_delivery_cost(req: DeliveryCostRequest):
         - "reason": A short 1-sentence explanation of the calculation or pricing logic.
         Make sure the response is strictly valid JSON.
         """
-        response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=[prompt],
-            config=types.GenerateContentConfig(response_mime_type="application/json")
-        )
+        models_to_try = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash']
+        response = None
+        last_error = None
+        for m in models_to_try:
+            try:
+                response = client.models.generate_content(
+                    model=m,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(response_mime_type="application/json")
+                )
+                if response and response.text:
+                    break
+            except Exception as ex:
+                last_error = ex
+                
+        if not response or not response.text:
+            raise last_error or Exception("No response from any Gemini model")
         
         result_text = response.text
         if result_text.startswith("```json"):
