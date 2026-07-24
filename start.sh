@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-echo "Starting deployment script..."
+export NODE_ENV=${NODE_ENV:-production}
+
+echo "Starting deployment script in NODE_ENV=$NODE_ENV..."
 
 # 1. Start the Python AI service in the background on port 8000
 echo "Starting AI service..."

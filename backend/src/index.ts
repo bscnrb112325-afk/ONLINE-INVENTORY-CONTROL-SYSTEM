@@ -50,11 +50,26 @@ initEventBusListeners();
 // Initialize Analytics Night Jobs
 initAnalyticsCron();
 
-if (ENV.NODE_ENV === "production") {
-  const __dirname = path.resolve();
-  app.use(express.static(path.join(__dirname, "../frontend/dist")));
-  app.get("/{*any}", (req: express.Request, res: express.Response) => {
-    res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
+import fs from "fs";
+
+// Check if static frontend dist files exist or NODE_ENV is production
+const possibleDistPaths = [
+  path.resolve(process.cwd(), "../frontend/dist"),
+  path.resolve(process.cwd(), "frontend/dist"),
+  path.resolve(__dirname, "../../frontend/dist"),
+  path.resolve(__dirname, "../frontend/dist")
+];
+const foundDistPath = possibleDistPaths.find((p) => fs.existsSync(p));
+
+if (foundDistPath || ENV.NODE_ENV === "production") {
+  const distDir = foundDistPath || path.resolve(process.cwd(), "../frontend/dist");
+  console.log("[Static Server] Serving static frontend from:", distDir);
+  app.use(express.static(distDir));
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.method === "GET" && !req.path.startsWith("/api")) {
+      return res.sendFile(path.join(distDir, "index.html"));
+    }
+    next();
   });
 } else {
   // In development, proxy all non-API requests to the Vite dev server!
