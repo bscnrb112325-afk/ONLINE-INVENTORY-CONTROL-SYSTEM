@@ -1,5 +1,4 @@
-# Nixpacks / Railpack configuration for multi-language (Python + Node.js) deployment
-[providers]
+# Nixpacks configuration for multi-language (Python + Node.js) deployment
 providers = ['python', 'node']
 
 [phases.setup]
