@@ -5,8 +5,12 @@ import random
 import os
 import json
 import base64
-from datetime import datetime, date
-from zoneinfo import ZoneInfo
+from datetime import datetime, date, timezone, timedelta
+try:
+    from zoneinfo import ZoneInfo
+    nairobi_tz = ZoneInfo("Africa/Nairobi")
+except Exception:
+    nairobi_tz = timezone(timedelta(hours=3))
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -22,7 +26,7 @@ from contextlib import asynccontextmanager
 load_dotenv(override=True)
 
 # ─── Scheduler setup ─────────────────────────────────────────────────────────
-scheduler = AsyncIOScheduler(timezone=ZoneInfo("Africa/Nairobi"))
+scheduler = AsyncIOScheduler(timezone=nairobi_tz)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
