@@ -6,19 +6,27 @@ const getAIServiceBaseUrl = () => process.env.AI_SERVICE_URL || "http://127.0.0.
 
 export async function fetchAIService(path: string, options?: RequestInit): Promise<Response> {
   const primaryUrl = getAIServiceBaseUrl();
-  try {
-    return await fetch(`${primaryUrl}${path}`, options);
-  } catch (err: any) {
-    if (err.code === "ECONNREFUSED" || err.cause?.code === "ECONNREFUSED") {
-      const fallbackUrl = primaryUrl.includes("8000") ? "http://127.0.0.1:18000" : "http://127.0.0.1:8000";
-      try {
-        return await fetch(`${fallbackUrl}${path}`, options);
-      } catch {
-        throw err;
+  const candidateUrls = Array.from(new Set([
+    primaryUrl,
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://0.0.0.0:8000",
+    "http://127.0.0.1:18000"
+  ]));
+
+  let lastErr: any;
+  for (const baseUrl of candidateUrls) {
+    try {
+      return await fetch(`${baseUrl}${path}`, options);
+    } catch (err: any) {
+      lastErr = err;
+      if (err.code === "ECONNREFUSED" || err.cause?.code === "ECONNREFUSED" || err.message?.includes("fetch failed")) {
+        continue;
       }
+      throw err;
     }
-    throw err;
   }
+  throw lastErr;
 }
 
 export class AIService {
