@@ -2,12 +2,29 @@ import { db } from "../db";
 import { aiInsights, recommendations, supplierBids, suppliers, goods } from "../db/schema";
 import { eq } from "drizzle-orm";
 
-const AI_SERVICE_URL = "http://127.0.0.1:18000";
+const getAIServiceBaseUrl = () => process.env.AI_SERVICE_URL || "http://127.0.0.1:18000";
+
+export async function fetchAIService(path: string, options?: RequestInit): Promise<Response> {
+  const primaryUrl = getAIServiceBaseUrl();
+  try {
+    return await fetch(`${primaryUrl}${path}`, options);
+  } catch (err: any) {
+    if (err.code === "ECONNREFUSED" || err.cause?.code === "ECONNREFUSED") {
+      const fallbackUrl = primaryUrl.includes("18000") ? "http://127.0.0.1:8000" : "http://127.0.0.1:18000";
+      try {
+        return await fetch(`${fallbackUrl}${path}`, options);
+      } catch {
+        throw err;
+      }
+    }
+    throw err;
+  }
+}
 
 export class AIService {
   static async getDemandForecast(productId: string, historicalSales: number[]) {
     try {
-      const response = await fetch(`${AI_SERVICE_URL}/predict`, {
+      const response = await fetchAIService("/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product_id: productId, historical_sales: historicalSales }),
@@ -32,7 +49,7 @@ export class AIService {
 
   static async getDynamicPricing(productId: string, currentPrice: number, stockLevel: number) {
     try {
-      const response = await fetch(`${AI_SERVICE_URL}/dynamic-pricing`, {
+      const response = await fetchAIService("/dynamic-pricing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product_id: productId, current_price: currentPrice, stock_level: stockLevel }),
@@ -64,7 +81,7 @@ export class AIService {
 
   static async getReorderRecommendation(productId: string, currentStock: number, avgDailySales: number) {
     try {
-      const response = await fetch(`${AI_SERVICE_URL}/reorder-recommendation`, {
+      const response = await fetchAIService("/reorder-recommendation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -138,7 +155,7 @@ export class AIService {
         reliability_score: parseFloat(b.reliabilityScore)
       }));
 
-      const response = await fetch(`${AI_SERVICE_URL}/suggest-supplier`, {
+      const response = await fetchAIService("/suggest-supplier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product_id: productId, bids: formattedBids }),

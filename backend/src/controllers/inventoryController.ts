@@ -4,6 +4,7 @@ import { categories, subCategories, goods, suppliers, recommendations, supplierN
 import { eq, desc } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
 import { cacheService } from "../services/cacheService";
+import { fetchAIService } from "../services/aiService";
 
 export const getCategories = async (req: Request, res: Response) => {
   try {
@@ -135,8 +136,7 @@ export const createGood = async (req: Request, res: Response) => {
     // Trigger AI anomaly detection asynchronously
     setTimeout(async () => {
       try {
-        const aiServiceUrl = "http://127.0.0.1:18000";
-        const aiRes = await fetch(`${aiServiceUrl}/detect-anomaly`, {
+        const aiRes = await fetchAIService("/detect-anomaly", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -213,8 +213,7 @@ export const updateGood = async (req: Request, res: Response) => {
     // Trigger AI anomaly detection asynchronously
     setTimeout(async () => {
       try {
-        const aiServiceUrl = "http://127.0.0.1:18000";
-        const aiRes = await fetch(`${aiServiceUrl}/detect-anomaly`, {
+        const aiRes = await fetchAIService("/detect-anomaly", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

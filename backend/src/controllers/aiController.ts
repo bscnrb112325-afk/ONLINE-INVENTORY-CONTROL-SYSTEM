@@ -3,9 +3,7 @@ import { db } from "../db";
 import { aiInsights, recommendations, goods, notifications, sales, saleItems, purchases, suppliers, supplierBids, analyticsWarehouse, supplierNotifications } from "../db/schema";
 import { eq, desc, and, ne, or, lte, sql } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
-import { AIService } from "../services/aiService";
-
-const AI_SERVICE_URL = "http://127.0.0.1:18000";
+import { AIService, fetchAIService } from "../services/aiService";
 
 // Get all AI Insights
 export const getAIInsights = async (req: Request, res: Response) => {
@@ -368,7 +366,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
 
       // Call AI service to compose and send email
       try {
-        await fetch(`${AI_SERVICE_URL}/email/send-shipped-notification`, {
+        await fetchAIService("/email/send-shipped-notification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -619,7 +617,7 @@ export const processVisionScan = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Missing imageBase64 or barcode field in request" });
     }
 
-    const aiRes = await fetch(`${AI_SERVICE_URL}/scan-vision`, {
+    const aiRes = await fetchAIService("/scan-vision", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image_base64: imageBase64 || "", barcode: barcode || "", context: context || "" }),
@@ -833,7 +831,7 @@ export const processDashboardChat = async (req: any, res: any) => {
     // 1. Parse intent via Python AI Service if online
     let intent = "UNKNOWN";
     try {
-      const intentRes = await fetch(`${AI_SERVICE_URL}/chat/parse-intent`, {
+      const intentRes = await fetchAIService("/chat/parse-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
@@ -984,7 +982,7 @@ export const processDashboardChat = async (req: any, res: any) => {
 
     // 4. Try summarizing via AI service
     try {
-      const sumRes = await fetch(`${AI_SERVICE_URL}/chat/summarize`, {
+      const sumRes = await fetchAIService("/chat/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, data: payload }),
@@ -1032,7 +1030,7 @@ export const getWhatsAppConfig = async (req: any, res: any) => {
 
 export const sendEmailReport = async (req: any, res: any) => {
   try {
-    const aiRes = await fetch(`${AI_SERVICE_URL}/email/send-report`, {
+    const aiRes = await fetchAIService("/email/send-report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body || {}),
@@ -1057,7 +1055,7 @@ export const sendEmailReport = async (req: any, res: any) => {
 
 export const getEmailConfig = async (req: any, res: any) => {
   try {
-    const aiRes = await fetch(`${AI_SERVICE_URL}/email/config`);
+    const aiRes = await fetchAIService("/email/config");
     if (!aiRes.ok) {
       return res.status(502).json({ error: "AI service error" });
     }
@@ -1081,7 +1079,7 @@ export const getEmailConfig = async (req: any, res: any) => {
 
 export const updateEmailRecipients = async (req: any, res: any) => {
   try {
-    const aiRes = await fetch(`${AI_SERVICE_URL}/email/recipients`, {
+    const aiRes = await fetchAIService("/email/recipients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body || {}),
@@ -1103,7 +1101,7 @@ export const calculateDeliveryCost = async (req: any, res: any) => {
     if (!lat || !lng || !address) {
       return res.status(400).json({ error: "Missing lat, lng, or address" });
     }
-    const aiRes = await fetch(`${AI_SERVICE_URL}/delivery-cost`, {
+    const aiRes = await fetchAIService("/delivery-cost", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lat, lng, address }),
