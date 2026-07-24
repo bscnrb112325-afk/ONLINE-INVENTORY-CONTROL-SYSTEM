@@ -1,0 +1,2 @@
+[tool.vercel]
+entrypoint = "ai_service.main:app"
