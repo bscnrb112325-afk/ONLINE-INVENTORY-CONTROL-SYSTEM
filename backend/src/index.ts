@@ -27,10 +27,8 @@ app.use(clerkMiddleware());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-app.get("/api/health", (req: express.Request, res: express.Response) => {
-  res.json({
-    message: "Inventory API running",
-  });
+app.get(["/health", "/api/health"], (req: express.Request, res: express.Response) => {
+  res.json({ status: "ok", message: "Inventory API running" });
 });
 
 app.use("/api/users", userRoutes);
@@ -52,9 +50,10 @@ initAnalyticsCron();
 
 if (ENV.NODE_ENV === "production") {
   const __dirname = path.resolve();
-  app.use(express.static(path.join(__dirname, "../frontend/dist")));
-  app.get("/{*any}", (req: express.Request, res: express.Response) => {
-    res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
+  const frontendDistPath = path.join(__dirname, "../frontend/dist");
+  app.use(express.static(frontendDistPath));
+  app.get("*", (req: express.Request, res: express.Response) => {
+    res.sendFile(path.join(frontendDistPath, "index.html"));
   });
 } else {
   // In development, proxy all non-API requests to the Vite dev server!

@@ -15,10 +15,13 @@ cd ..
 
 # 2. Run custom migrations (avoids interactive prompts that cause drizzle-kit to hang)
 echo "Running database migrations..."
-# npm run db:push --prefix backend  # Skipped to prevent interactive hangs in production
-npx tsx backend/src/runMigration.ts || echo "Custom migration failed, continuing..."
+if [ -f "backend/dist/runMigration.js" ]; then
+    node backend/dist/runMigration.js || echo "Custom migration failed, continuing..."
+else
+    npx tsx backend/src/runMigration.ts || echo "Custom migration failed, continuing..."
+fi
 
 # 3. Start the Node.js backend using 'exec' so it correctly replaces the shell process
-# This ensures Sevalla can properly track its health and exit codes.
+# This ensures Sevalla can properly track its health, keep PID 1 alive, and monitor exit codes.
 echo "Starting Node.js backend..."
 exec npm run start --prefix backend
