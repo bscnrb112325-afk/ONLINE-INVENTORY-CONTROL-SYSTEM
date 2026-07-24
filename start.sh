@@ -1,11 +1,24 @@
 #!/bin/bash
-# 1. Push database schema
-npm run db:push --prefix backend
+set -e
 
-# 2. Start the Python AI service in the background on port 18000
+echo "Starting deployment script..."
+
+# 1. Start the Python AI service in the background on port 18000
+echo "Starting AI service..."
 cd ai_service
-python -m uvicorn main:app --host 0.0.0.0 --port 18000 &
+if [ -d "/app/.venv" ]; then
+    /app/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 18000 &
+else
+    python3 -m uvicorn main:app --host 0.0.0.0 --port 18000 &
+fi
 cd ..
 
-# 3. Start the Node.js backend (which binds to the port Sevalla provides)
-npm run start --prefix backend
+# 2. Run custom migrations (avoids interactive prompts that cause drizzle-kit to hang)
+echo "Running database migrations..."
+# npm run db:push --prefix backend  # Skipped to prevent interactive hangs in production
+npx tsx backend/src/runMigration.ts || echo "Custom migration failed, continuing..."
+
+# 3. Start the Node.js backend using 'exec' so it correctly replaces the shell process
+# This ensures Sevalla can properly track its health and exit codes.
+echo "Starting Node.js backend..."
+exec npm run start --prefix backend
