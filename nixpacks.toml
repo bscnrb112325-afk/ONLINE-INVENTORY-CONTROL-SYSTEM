@@ -2,11 +2,11 @@
 providers = ['python', 'node']
 
 [phases.setup]
-nixPkgs = ['python311', 'gcc', 'bash']
+nixPkgs = ['python311', 'python311Packages.pip', 'gcc', 'bash']
 
 [phases.install]
 cmds = [
-  'pip install --no-cache-dir -r ai_service/requirements.txt',
+  'python3 -m pip install --no-cache-dir -r ai_service/requirements.txt',
   'npm install --prefix backend',
   'npm install --prefix frontend'
 ]
