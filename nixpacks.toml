@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ["...", "python311", "gcc"]
+
+[phases.install]
+cmds = [
+  "npm ci",
+  "python3 -m venv /opt/venv",
+  "/opt/venv/bin/pip install -r ai_service/requirements.txt"
+]
+
+[phases.build]
+cmds = [
+  "npm run build"
+]
+
+[start]
+cmd = "PATH=\"/opt/venv/bin:$PATH\" bash ./start.sh"
