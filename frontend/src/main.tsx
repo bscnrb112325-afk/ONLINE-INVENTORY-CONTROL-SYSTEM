@@ -7,12 +7,8 @@ import App from './App.tsx'
 
 const queryClient = new QueryClient()
 
-// Import your publishable key
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-
-if (!PUBLISHABLE_KEY) {
-  throw new Error("Missing Publishable Key")
-}
+// Import publishable key with fallback for production build
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_cHJlY2lvdXMtZ2FubmV0LTkwLmNsZXJrLmFjY291bnRzLmRldiQ"
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
