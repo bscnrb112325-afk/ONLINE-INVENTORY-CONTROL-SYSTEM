@@ -1,10 +1,13 @@
 {
   "name": "inventory-backend",
   "version": "1.0.0",
-  "main": "dist/server.js",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node src/index.ts",
-    "db:push": "drizzle-kit push"
+    "dev": "nodemon src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:push": "drizzle-kit push",
+    "back": "npm run dev"
   },
   "dependencies": {
     "@clerk/express": "^1.0.1",
@@ -14,11 +17,13 @@
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "http-proxy-middleware": "^4.1.1",
     "pg": "^8.16.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
   },

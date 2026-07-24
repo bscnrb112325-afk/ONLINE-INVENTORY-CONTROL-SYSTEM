@@ -6,7 +6,7 @@ const Navbar = () => {
 
   return (
     <div className="navbar bg-base-100 shadow-sm px-4 lg:px-8 border-b border-base-200">
-      <div className="flex-none md:hidden">
+      <div className="flex-none lg:hidden">
         <label htmlFor="my-drawer-2" className="btn btn-square btn-ghost drawer-button">
           <Menu size={24} />
         </label>
@@ -14,7 +14,7 @@ const Navbar = () => {
       
       <div className="flex-1">
         <h1 className="text-xl font-semibold hidden md:block">
-          Welcome back, {user?.firstName || 'User'}
+          WELCOME BACK TO ONLINE INVENTORY CONTROL SYSTEM
         </h1>
       </div>
       

@@ -27,7 +27,15 @@ export const createSupplier = async (req: Request, res: Response) => {
 export const getPurchases = async (req: Request, res: Response) => {
   try {
     const allPurchases = await db.query.purchases.findMany({
-      with: { supplier: true, user: true },
+      with: { 
+        supplier: true, 
+        user: true,
+        goods: {
+          with: {
+            subCategory: true
+          }
+        }
+      },
     });
     res.json(allPurchases);
   } catch (error: any) {
@@ -41,6 +49,26 @@ export const createPurchase = async (req: Request, res: Response) => {
     const [purchase] = await db.insert(purchases).values({
       supplierId, userId, totalAmount: totalAmount.toString(), status
     }).returning();
+    res.json(purchase);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const markPurchasePaid = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { isPaid, paymentMethod } = req.body;
+    
+    const updateData: any = { isPaid };
+    if (paymentMethod) {
+      updateData.paymentMethod = paymentMethod;
+    }
+
+    const [purchase] = await db.update(purchases)
+      .set(updateData)
+      .where(eq(purchases.id, id))
+      .returning();
     res.json(purchase);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

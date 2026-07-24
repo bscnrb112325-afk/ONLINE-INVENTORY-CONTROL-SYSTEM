@@ -1,25 +1,32 @@
 {
-  "name": "productify",
+  "name": "online-inventory-control-system",
   "version": "1.0.0",
-  "description": "",
+  "description": "cd backend\r npm install\r npm run dev",
   "main": "index.js",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend && npm run build --prefix backend",
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"cd ai_service && .\\.venv\\Scripts\\uvicorn main:app --reload --port 8000\"",
+    "build": "npm install --prefix backend && npm install --prefix frontend && cd ai_service && .\\.venv\\Scripts\\pip install -r requirements.txt && cd .. && npm run build --prefix frontend && npm run build --prefix backend",
     "start": "npm run db:push --prefix backend && npm run start --prefix backend"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/burakorkmez/productify.git"
+    "url": "git+https://github.com/bscnrb112325-afk/ONLINE-INVENTORY-CONTROL-SYSTEM.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/burakorkmez/productify/issues"
+    "url": "https://github.com/bscnrb112325-afk/ONLINE-INVENTORY-CONTROL-SYSTEM/issues"
   },
-  "homepage": "https://github.com/burakorkmez/productify#readme"
+  "homepage": "https://github.com/bscnrb112325-afk/ONLINE-INVENTORY-CONTROL-SYSTEM#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
 }
