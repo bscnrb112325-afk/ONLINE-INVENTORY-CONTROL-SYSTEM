@@ -6,14 +6,19 @@ echo "Starting deployment script..."
 # 1. Start the Python AI service in the background on port 8000
 echo "Starting AI service..."
 cd ai_service
-if [ -d "/app/.venv" ]; then
+if command -v python3 >/dev/null 2>&1; then
+    python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+elif command -v python >/dev/null 2>&1; then
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+elif [ -f "/app/.venv/bin/python" ]; then
     /app/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
-elif [ -d ".venv" ]; then
+elif [ -f ".venv/bin/python" ]; then
     .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
 else
-    python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+    echo "ERROR: No python executable found!"
 fi
 cd ..
+sleep 2
 
 # 2. Run custom migrations (avoids interactive prompts that cause drizzle-kit to hang)
 echo "Running database migrations..."
