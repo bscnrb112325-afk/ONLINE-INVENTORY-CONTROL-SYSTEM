@@ -10,16 +10,18 @@ echo "Starting AI service..."
 cd ai_service
 
 # Guarantee Python requirements are installed in runtime environment
-if command -v python3 >/dev/null 2>&1; then
+if [ -f "/app/.venv/bin/python" ]; then
+    /app/.venv/bin/python -m pip install --no-cache-dir -r requirements.txt || true
+    /app/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+elif [ -f "../.venv/bin/python" ]; then
+    ../.venv/bin/python -m pip install --no-cache-dir -r requirements.txt || true
+    ../.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+elif command -v python3 >/dev/null 2>&1; then
     python3 -m pip install --no-cache-dir -r requirements.txt || true
     python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
 elif command -v python >/dev/null 2>&1; then
     python -m pip install --no-cache-dir -r requirements.txt || true
     python -m uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
-elif [ -f "/app/.venv/bin/python" ]; then
-    /app/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
-elif [ -f ".venv/bin/python" ]; then
-    .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
 else
     echo "ERROR: No python executable found!"
 fi
