@@ -113,6 +113,8 @@ export const sales = pgTable("sales", {
   orderStatus: text("order_status").default("Pending").notNull(), // "Pending" -> "Paid" -> "Processing" -> "Packed" -> "Shipped" -> "Delivered"
   deliveryLat: doublePrecision("delivery_lat"),   // Customer GPS latitude (from ZuriShop map pin)
   deliveryLng: doublePrecision("delivery_lng"),   // Customer GPS longitude (from ZuriShop map pin)
+  proofOfDeliveryImage: text("proof_of_delivery_image"),
+  trackingCode: text("tracking_code"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

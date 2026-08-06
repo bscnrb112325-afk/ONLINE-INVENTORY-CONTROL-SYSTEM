@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { db } from "../db";
-import { aiInsights, recommendations, goods, notifications, sales, saleItems, purchases, suppliers, supplierBids, analyticsWarehouse, supplierNotifications } from "../db/schema";
+import { aiInsights, recommendations, goods, notifications, sales, saleItems, purchases, suppliers, supplierBids, analyticsWarehouse, supplierNotifications, customers } from "../db/schema";
 import { eq, desc, and, ne, or, lte, sql } from "drizzle-orm";
 import { eventBus } from "../services/eventBus";
 import { AIService, fetchAIService } from "../services/aiService";
@@ -327,10 +327,14 @@ export const getOrders = async (req: Request, res: Response) => {
 export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const { orderStatus } = req.body;
+    const { orderStatus, proofOfDeliveryImage, trackingCode } = req.body;
+
+    const updateData: any = { orderStatus };
+    if (proofOfDeliveryImage) updateData.proofOfDeliveryImage = proofOfDeliveryImage;
+    if (trackingCode) updateData.trackingCode = trackingCode;
 
     const [updatedSale] = await db.update(sales)
-      .set({ orderStatus })
+      .set(updateData)
       .where(eq(sales.id, id))
       .returning();
 
@@ -346,6 +350,23 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       saleId: id,
       orderStatus
     });
+
+    if (orderStatus === "Shipped" && updatedSale.customerId) {
+      const customer = await db.query.customers.findFirst({
+        where: eq(customers.id, updatedSale.customerId)
+      });
+      if (customer && customer.email) {
+        fetchAIService("/email/shipped-notification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            order_id: id,
+            customer_name: customer.name,
+            customer_email: customer.email,
+          }),
+        }).catch(err => console.error("[AI] Failed to trigger shipped email:", err));
+      }
+    }
 
     res.json(updatedSale);
   } catch (error: any) {

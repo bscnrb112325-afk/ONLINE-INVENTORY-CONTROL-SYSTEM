@@ -595,6 +595,16 @@ class EmailReportRequest(BaseModel):
     """Optional body for manual trigger — override recipients."""
     recipients: Optional[List[str]] = None
 
+class ShippedEmailRequest(BaseModel):
+    order_id: str
+    customer_name: str
+    customer_email: str
+    items_summary: Optional[str] = None
+
+class ShippedEmailResponse(BaseModel):
+    success: bool
+    tracking_code: Optional[str] = None
+    message: str
 
 class EmailReportResponse(BaseModel):
     success: bool
@@ -880,6 +890,75 @@ async def trigger_email_report(req: EmailReportRequest = EmailReportRequest()):
         report_preview=report_text[:800] + "..." if len(report_text) > 800 else report_text,
     )
 
+
+@app.post("/email/shipped-notification", response_model=ShippedEmailResponse)
+async def send_shipped_notification(req: ShippedEmailRequest):
+    """
+    Send an AI-generated shipped notification email to the customer with a unique tracking code.
+    """
+    server     = os.getenv("SMTP_SERVER", "")
+    port_str   = os.getenv("SMTP_PORT", "587")
+    user       = os.getenv("SMTP_USER", "")
+    password   = os.getenv("SMTP_PASSWORD", "")
+    api_key    = os.getenv("GEMINI_API_KEY")
+
+    if not server or not user or not password or "your_" in user:
+        return ShippedEmailResponse(
+            success=False,
+            message="Email credentials not configured."
+        )
+        
+    if not api_key or api_key == "your_gemini_api_key_here":
+        return ShippedEmailResponse(
+            success=False,
+            message="Gemini API Key not configured."
+        )
+
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 587
+
+    # Generate tracking code
+    import uuid
+    tracking_code = f"TRK-{str(uuid.uuid4())[:8].upper()}"
+
+    # Use AI to generate a friendly message
+    try:
+        client = genai.Client(api_key=api_key)
+        prompt = f"""
+        Write a short, friendly, and professional shipping notification email to a customer.
+        Customer Name: {req.customer_name}
+        Order ID: {req.order_id}
+        Tracking Code: {tracking_code}
+        Items (if any): {req.items_summary or 'Your ordered items'}
+
+        The tone should be enthusiastic and assuring. 
+        Format as plain text, no markdown syntax, suitable for direct email body.
+        """
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+        email_body = response.text
+    except Exception as e:
+        # Fallback if AI fails
+        email_body = f"Hello {req.customer_name},\n\nYour order {req.order_id} has been shipped!\n\nYour tracking code is: {tracking_code}\n\nThank you for shopping with us!"
+
+    # Send the email
+    ok = await _send_email_message(server, port, user, password, req.customer_email, email_body)
+    
+    if ok:
+        return ShippedEmailResponse(
+            success=True,
+            tracking_code=tracking_code,
+            message="Shipping notification sent."
+        )
+    else:
+        return ShippedEmailResponse(
+            success=False,
+            message="Failed to send the email via SMTP."
+        )
 
 @app.get("/email/config")
 async def get_email_config():

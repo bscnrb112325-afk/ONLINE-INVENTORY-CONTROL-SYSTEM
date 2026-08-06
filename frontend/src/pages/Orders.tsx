@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { Truck, CheckCircle, Package, Hourglass, User, Calendar, CreditCard, Eye, EyeOff, Clock, ArrowUpRight, ShieldAlert, DollarSign, X, ClipboardCheck, Lock, MapPin, Navigation } from 'lucide-react';
 import { UserHeader } from '../components/UserHeader';
 import DeliveryMap from '../components/DeliveryMap';
 import AddressLocatorModal from '../components/AddressLocatorModal';
+import SignaturePad from '../components/SignaturePad';
 
 const ORDER_STATUSES = ['Pending', 'Paid', 'Processing', 'Packed', 'Shipped', 'Delivered'];
 
@@ -33,6 +34,41 @@ const Orders = () => {
   const [receivingPurchase, setReceivingPurchase] = useState<any | null>(null);
   const [verifiedQty, setVerifiedQty] = useState<number>(0);
   const [isAddressLocatorOpen, setIsAddressLocatorOpen] = useState(false);
+
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
+  const [trackingCode, setTrackingCode] = useState("");
+  const [proofImage, setProofImage] = useState<string | null>(null);
+  const [proofMode, setProofMode] = useState<'upload' | 'signature'>('signature');
+
+  const handleImageUploadFallback = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProofImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  useEffect(() => {
+    if (!isDeliveryModalOpen) {
+      setTrackingCode("");
+      setProofImage(null);
+      setProofMode('signature');
+    }
+  }, [isDeliveryModalOpen]);
+
+  const handleDeliverySubmit = () => {
+    if (!trackingCode || !proofImage || !selectedOrder) return;
+    updateStatusMutation.mutate({
+      orderId: selectedOrder.id,
+      status: 'Delivered',
+      trackingCode,
+      proofOfDeliveryImage: proofImage
+    });
+    setIsDeliveryModalOpen(false); // This will trigger the useEffect to reset state
+  };
 
   // Lock Screen
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -103,8 +139,8 @@ const Orders = () => {
 
   // Mutation to update order status
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
-      await api.post(`/ai/orders/${orderId}/status`, { orderStatus: status });
+    mutationFn: async ({ orderId, status, proofOfDeliveryImage, trackingCode }: { orderId: string; status: string; proofOfDeliveryImage?: string; trackingCode?: string }) => {
+      await api.patch(`/ai/orders/${orderId}/status`, { orderStatus: status, proofOfDeliveryImage, trackingCode });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -438,24 +474,53 @@ const Orders = () => {
                   </ul>
                 </div>
 
+                {/* Proof of Delivery Details */}
+                {selectedOrder.trackingCode && selectedOrder.proofOfDeliveryImage && (
+                  <div className="border-t border-base-200 pt-4 space-y-3">
+                    <h4 className="text-xs font-bold text-base-content/70 uppercase tracking-wider">Proof of Delivery</h4>
+                    <div className="bg-base-200/50 p-3 rounded-lg space-y-2">
+                      <div className="text-sm">
+                        <span className="font-semibold text-base-content/70">Tracking Code: </span>
+                        <span className="font-mono bg-base-100 px-2 py-0.5 rounded border border-base-300">{selectedOrder.trackingCode}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-base-content/70 text-sm block mb-1">Signature / Photo:</span>
+                        <img src={selectedOrder.proofOfDeliveryImage} alt="Proof of delivery" className="rounded-lg w-full h-auto object-cover border border-base-300 max-h-[300px]" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Action Buttons to Transition Status */}
                 <div className="border-t border-base-200 pt-4 space-y-2">
                   <h4 className="text-xs font-bold text-base-content/70 uppercase tracking-wider mb-2">Transition Order Status</h4>
                   <div className="flex flex-wrap gap-2">
-                    {ORDER_STATUSES.map((status) => {
+                    {(() => {
                       const rawStatus = selectedOrder.orderStatus || 'Pending';
                       const normalizedDbStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+                      const currentIndex = ORDER_STATUSES.indexOf(normalizedDbStatus);
+                      
+                      if (currentIndex === -1 || currentIndex === ORDER_STATUSES.length - 1) {
+                        return <div className="text-sm text-success font-bold flex items-center gap-2"><CheckCircle size={16}/> Order is Fully Delivered</div>;
+                      }
+
+                      const nextStatus = ORDER_STATUSES[currentIndex + 1];
                       return (
-                      <button
-                        key={status}
-                        className={`btn btn-xs ${normalizedDbStatus === status ? 'btn-primary' : 'btn-outline'}`}
-                        disabled={updateStatusMutation.isPending}
-                        onClick={() => updateStatusMutation.mutate({ orderId: selectedOrder.id, status })}
-                      >
-                        {status}
-                      </button>
+                        <button
+                          className="btn btn-sm btn-primary w-full"
+                          disabled={updateStatusMutation.isPending}
+                          onClick={() => {
+                            if (nextStatus === 'Delivered') {
+                              setIsDeliveryModalOpen(true);
+                            } else {
+                              updateStatusMutation.mutate({ orderId: selectedOrder.id, status: nextStatus });
+                            }
+                          }}
+                        >
+                          {updateStatusMutation.isPending ? <span className="loading loading-spinner loading-xs"></span> : `Advance to ${nextStatus}`}
+                        </button>
                       );
-                    })}
+                    })()}
                   </div>
                 </div>
 
@@ -724,6 +789,95 @@ const Orders = () => {
           </div>
         </div>
       )}
+
+      {/* Delivery Proof Modal */}
+      {isDeliveryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-base-100 p-6 rounded-xl shadow-xl w-full max-w-md">
+            <h3 className="font-bold text-lg mb-4">Complete Delivery</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="label text-sm font-semibold">Tracking Code</label>
+                <input 
+                  type="text" 
+                  className="input input-bordered w-full" 
+                  value={trackingCode}
+                  onChange={(e) => setTrackingCode(e.target.value)}
+                  placeholder="Enter Tracking Code (e.g. TRK-...)" 
+                />
+              </div>
+              <div>
+                <label className="label text-sm font-semibold">Proof of Delivery (Photo & Signature)</label>
+                
+                <div className="flex gap-2 mb-3">
+                  <button 
+                    type="button"
+                    className={`btn btn-xs flex-1 ${proofMode === 'signature' ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setProofMode('signature')}
+                  >
+                    Signature
+                  </button>
+                  <button 
+                    type="button"
+                    className={`btn btn-xs flex-1 ${proofMode === 'upload' ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setProofMode('upload')}
+                  >
+                    Upload
+                  </button>
+                </div>
+
+                <div className="border border-base-300 rounded-xl overflow-hidden bg-base-200 relative min-h-50 flex flex-col items-center justify-center p-4">
+                  {!proofImage ? (
+                    <>
+                      {proofMode === 'signature' && (
+                        <SignaturePad 
+                          onSave={(dataUrl) => setProofImage(dataUrl)}
+                          onCancel={() => setProofMode('signature')}
+                        />
+                      )}
+
+                      {proofMode === 'upload' && (
+                        <div className="form-control w-full py-8 text-center flex flex-col items-center justify-center">
+                          <label className="label cursor-pointer flex flex-col gap-3">
+                            <span className="label-text text-sm font-bold">Upload Photo Manually</span>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              capture="environment" 
+                              onChange={handleImageUploadFallback}
+                              className="file-input file-input-bordered file-input-primary w-full max-w-xs" 
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="w-full relative">
+                      <img src={proofImage} alt="Proof" className="w-full h-auto object-cover" />
+                      <div className="absolute top-2 right-2">
+                        <button type="button" className="btn btn-sm btn-circle btn-neutral" onClick={() => setProofImage(null)}>
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="modal-action mt-6 flex justify-end gap-2">
+              <button className="btn btn-ghost" onClick={() => setIsDeliveryModalOpen(false)}>Cancel</button>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleDeliverySubmit}
+                disabled={!trackingCode || !proofImage || updateStatusMutation.isPending}
+              >
+                {updateStatusMutation.isPending ? <span className="loading loading-spinner"></span> : 'Complete Delivery'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
