@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useUser } from '@clerk/clerk-react';
 import { api } from '../api';
-import { ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Sparkles, HelpCircle, UserCircle, DollarSign, ReceiptText, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
-
+import { ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Sparkles, HelpCircle, UserCircle, DollarSign, ReceiptText, Lock, Eye, EyeOff, KeyRound, Camera } from 'lucide-react';
+import { CameraScanner } from '../components/CameraScanner';
 interface CartItem {
   goodId: string;
   serial: string;
@@ -22,6 +22,7 @@ const POS = () => {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'cash' | 'mpesa' | 'card'>('cash');
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [showCameraScanner, setShowCameraScanner] = useState(false);
 
   // M-Pesa States
   const [mpesaPhone, setMpesaPhone] = useState('0700000000');
@@ -123,7 +124,7 @@ const POS = () => {
 
   // Listen to SSE for STK Push callback
   useEffect(() => {
-    const apiUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:5000/api`;
+    const apiUrl = (import.meta as any).env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:5000/api`;
     const eventSource = new EventSource(`${apiUrl}/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -288,8 +289,8 @@ const POS = () => {
   };
 
   // Handle Scanning Barcode directly (USB/Bluetooth scanners & manual entry)
-  const handleBarcodeScan = async () => {
-    const query = scanSerial.trim();
+  const handleBarcodeScan = async (scannedCode?: string) => {
+    const query = (scannedCode || scanSerial).trim();
     if (!query) return;
 
     // 1. Try instant local match
@@ -462,24 +463,33 @@ const POS = () => {
   const dynamicPricingInsights = insights.filter((ins: any) => ins.type === 'dynamic_pricing');
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-6 animate-in fade-in duration-500">
+    <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row gap-6 animate-in fade-in duration-500">
       {/* Left side - Product Selection Grid */}
       <div className="flex-1 flex flex-col bg-base-100 shadow-md rounded-2xl border border-base-200 overflow-hidden">
         <div className="p-4 border-b border-base-200 bg-base-200/10 flex flex-col sm:flex-row gap-4">
           {/* Scanning Input */}
           <div className="flex gap-2 flex-1">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50" size={18} />
-              <input 
-                type="text" 
-                placeholder="Scan barcode directly (e.g. SN-883921)..." 
-                className="input input-bordered w-full pl-10" 
-                value={scanSerial}
-                onChange={(e) => setScanSerial(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleBarcodeScan()}
-              />
+            <div className="relative flex-1 flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Scan barcode directly (e.g. SN-883921)..." 
+                  className="input input-bordered w-full pl-10" 
+                  value={scanSerial}
+                  onChange={(e) => setScanSerial(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleBarcodeScan()}
+                />
+              </div>
+              <button 
+                className="btn btn-square btn-outline btn-primary" 
+                onClick={() => setShowCameraScanner(true)}
+                title="Use Web Camera"
+              >
+                <Camera size={20} />
+              </button>
             </div>
-            <button className="btn btn-primary shadow-sm" onClick={handleBarcodeScan}>Scan</button>
+            <button className="btn btn-primary shadow-sm" onClick={() => handleBarcodeScan()}>Scan</button>
           </div>
 
           {/* Search catalog */}
@@ -496,7 +506,7 @@ const POS = () => {
         </div>
         
         {/* Products catalog list */}
-        <div className="flex-1 overflow-y-auto p-4 bg-base-200/30">
+        <div className="flex-1 p-4 bg-base-200/30">
           {checkoutSuccess && (
             <div className="alert alert-success shadow-md rounded-2xl mb-4 font-bold animate-pulse text-sm">
               <Sparkles size={16} />
@@ -553,7 +563,7 @@ const POS = () => {
       </div>
 
       {/* Right side - Cart Checkout Drawer */}
-      <div className="w-full lg:w-96 flex flex-col bg-base-100 shadow-md rounded-2xl border border-base-200 overflow-hidden">
+      <div className="w-full lg:w-md flex flex-col bg-base-100 shadow-md rounded-2xl border border-base-200 overflow-hidden shrink-0">
         <div className="p-4 border-b border-base-200 bg-primary text-primary-content flex justify-between items-center">
           <h2 className="font-bold flex items-center gap-2 text-sm uppercase tracking-wider">
             <ShoppingCart size={18} />
@@ -584,42 +594,56 @@ const POS = () => {
         </div>
         
         {/* Cart Item rows */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 p-4 space-y-4">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-base-content/40 text-xs py-8 space-y-2">
-              <ShoppingCart size={32} className="opacity-40" />
-              <span>Register is empty. Scan barcode or click items to buy.</span>
+            <div className="h-full flex flex-col items-center justify-center text-base-content/40 text-base py-12 space-y-4 border-4 border-dashed border-base-200 rounded-3xl m-4">
+              <ShoppingCart size={64} className="opacity-40" />
+              <span className="font-bold text-center px-4">Register is empty.<br/>Scan barcode or click items to buy.</span>
             </div>
           ) : (
             cart.map((item) => {
               const isLow = item.maxQty <= 3;
               return (
-                <div key={item.goodId} className="flex items-center gap-3 p-3 bg-base-200/50 rounded-xl border border-base-200 hover:border-primary/20 transition-all">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-xs truncate text-base-content">{item.name}</h4>
-                    <p className="text-[10px] text-base-content/50 font-mono">SN: {item.serial}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-bold text-primary">KSh {item.unitPrice.toFixed(2)} / ea</span>
+                <div key={item.goodId} className="flex flex-col gap-4 p-5 bg-base-200/50 rounded-2xl border-2 border-base-200 hover:border-primary/40 transition-all shadow-md relative">
+                  
+                  {/* Delete Button */}
+                  <button 
+                    className="btn btn-ghost btn-sm btn-circle absolute top-4 right-4 text-error/80 hover:bg-error/20 hover:text-error" 
+                    onClick={() => removeFromCart(item.goodId)}
+                    title="Remove item"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+
+                  {/* Name and Price Section */}
+                  <div className="w-full pr-10">
+                    <h4 className="font-bold text-base text-base-content wrap-break-word">{item.name}</h4>
+                    <p className="text-xs text-base-content/60 font-mono mt-1 break-all">SN: {item.serial}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-sm font-bold text-primary">KSh {item.unitPrice.toFixed(2)}</span>
+                      <span className="text-xs font-semibold text-base-content/50">/ ea</span>
                       {isLow && (
-                        <span className="badge badge-warning badge-[10px] p-1 font-bold animate-pulse">Only {item.maxQty} left</span>
+                        <span className="badge badge-warning font-bold animate-pulse ml-2 text-xs">Only {item.maxQty} left</span>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button className="btn btn-ghost btn-xs btn-square" onClick={() => updateQuantity(item.goodId, -1)}>
-                      <Minus size={12} />
-                    </button>
-                    <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
-                    <button className="btn btn-ghost btn-xs btn-square" onClick={() => updateQuantity(item.goodId, 1)}>
-                      <Plus size={12} />
-                    </button>
+
+                  {/* Controls and Total Section */}
+                  <div className="flex items-center justify-between w-full pt-3 border-t border-base-300/50 mt-1">
+                    <div className="flex items-center gap-2 bg-base-100 p-1.5 rounded-xl border border-base-200">
+                      <button className="btn btn-outline btn-sm btn-square" onClick={() => updateQuantity(item.goodId, -1)}>
+                        <Minus size={18} />
+                      </button>
+                      <span className="text-base font-bold w-10 text-center">{item.quantity}</span>
+                      <button className="btn btn-outline btn-sm btn-square" onClick={() => updateQuantity(item.goodId, 1)}>
+                        <Plus size={18} />
+                      </button>
+                    </div>
+                    <div className="font-bold text-lg text-right text-base-content">
+                      KSh {(item.quantity * item.unitPrice).toFixed(2)}
+                    </div>
                   </div>
-                  <div className="font-bold text-xs w-16 text-right text-base-content">
-                    KSh {(item.quantity * item.unitPrice).toFixed(2)}
-                  </div>
-                  <button className="btn btn-ghost btn-xs btn-square text-error/70 hover:bg-error/10" onClick={() => removeFromCart(item.goodId)}>
-                    <Trash2 size={14} />
-                  </button>
+                  
                 </div>
               );
             })
@@ -627,12 +651,12 @@ const POS = () => {
 
           {/* AI Cross-selling Recommendations */}
           {dynamicPricingInsights.length > 0 && cart.length > 0 && (
-            <div className="mt-6 border-t border-base-200 pt-4 space-y-2">
-              <h4 className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
-                <Sparkles size={12} className="animate-spin" />
+            <div className="mt-6 border-t border-base-200 pt-4 space-y-3">
+              <h4 className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <Sparkles size={16} className="animate-spin" />
                 <span>AI Suggested Add-ons</span>
               </h4>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {dynamicPricingInsights.slice(0, 2).map((ins: any) => {
                   let parsedPred: any = {};
                   try {
@@ -648,14 +672,14 @@ const POS = () => {
                   return (
                     <div 
                       key={ins.id} 
-                      className="p-2 bg-primary/5 hover:bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                      className="p-4 h-20 bg-primary/5 hover:bg-primary/10 border-2 border-primary/20 hover:border-primary/40 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all shadow-sm"
                       onClick={() => addToCart(ins.good)}
                     >
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-bold truncate text-base-content">{ins.good?.subCategory?.name}</div>
-                        <div className="text-[9px] text-base-content/50">Dynamic Price: KSh {parseFloat(parsedPred.suggestedPrice || ins.good?.sellRate).toFixed(2)}</div>
+                      <div className="min-w-0 flex flex-col justify-center h-full">
+                        <div className="text-sm font-bold truncate text-base-content">{ins.good?.subCategory?.name}</div>
+                        <div className="text-xs mt-0.5 text-base-content/60">Dynamic Price: KSh {parseFloat(parsedPred.suggestedPrice || ins.good?.sellRate).toFixed(2)}</div>
                       </div>
-                      <button className="btn btn-primary btn-xs font-bold text-[10px]">Add</button>
+                      <button className="btn btn-primary btn-sm font-bold px-4">Add</button>
                     </div>
                   );
                 })}
@@ -666,19 +690,7 @@ const POS = () => {
 
         {/* Customer & Discount */}
         <div className="p-4 border-t border-base-200 bg-base-100 space-y-3">
-          <div className="flex items-center gap-2">
-            <UserCircle size={16} className="text-base-content/60" />
-            <select 
-              className="select select-bordered select-xs w-full"
-              value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-            >
-              <option value="">Walk-in Customer</option>
-              {customers.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+
           {isManagerOrAdmin && (
             <div className="flex items-center gap-2">
               <DollarSign size={16} className="text-base-content/60" />
@@ -1067,6 +1079,40 @@ const POS = () => {
             </form>
           </div>
         </div>
+      )}
+      
+      {showCameraScanner && (
+        <CameraScanner 
+          onClose={() => setShowCameraScanner(false)} 
+          onResult={async (barcode, base64) => {
+            if (barcode) {
+              setScanSerial(barcode);
+              setShowCameraScanner(false);
+              handleBarcodeScan(barcode);
+            } else if (base64) {
+              setShowCameraScanner(false);
+              setIsProcessing(true);
+              try {
+                const res = await api.post('/ai/vision-scan', { imageBase64: base64 });
+                const { success, data } = res.data;
+                if (success && data) {
+                  const serialToScan = data.existingProduct?.serial || data.serial;
+                  if (serialToScan) {
+                     handleBarcodeScan(serialToScan);
+                  } else {
+                     alert("AI could not identify a barcode or product from the image.");
+                  }
+                } else {
+                  alert("Failed to scan image.");
+                }
+              } catch (error: any) {
+                alert("Error scanning image: " + (error.response?.data?.error || error.message));
+              } finally {
+                setIsProcessing(false);
+              }
+            }
+          }} 
+        />
       )}
     </div>
   );
