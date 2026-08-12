@@ -1,7 +1,8 @@
 import axios from "axios";
 
+const isProd = import.meta.env.PROD;
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:5000/api`
+  baseURL: import.meta.env.VITE_API_URL || (isProd ? '/api' : `${window.location.protocol}//${window.location.hostname}:5000/api`)
 });
 
 api.interceptors.request.use(async (config) => {
