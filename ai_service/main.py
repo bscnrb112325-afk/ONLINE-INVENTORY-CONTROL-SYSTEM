@@ -787,22 +787,27 @@ async def _build_report_text() -> str:
     return "\n".join(lines)
 
 
-async def _send_email_message(server: str, port: int, user: str, password: str, recipient: str, message: str) -> bool:
-    """Send a single email message via SMTP. Returns True on success."""
+async def _send_email_message(api_key: str, sender_email: str, recipient: str, subject: str, message: str) -> bool:
+    """Send a single email message via Brevo API (port 443) to bypass SMTP blocks. Returns True on success."""
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"name": "OICS System", "email": sender_email},
+        "to": [{"email": recipient}],
+        "subject": subject,
+        "textContent": message
+    }
     try:
-        msg = MIMEMultipart()
-        msg['From'] = user
-        msg['To'] = recipient
-        msg['Subject'] = "OICS Daily Business Report"
-        
-        # We can send it as plain text or HTML. Using plain text since markdown is somewhat formatted.
-        msg.attach(MIMEText(message, 'plain', 'utf-8'))
-        
-        with smtplib.SMTP(server, port) as smtp:
-            smtp.starttls()
-            smtp.login(user, password)
-            smtp.send_message(msg)
-        return True
+        import httpx
+        response = httpx.post(url, json=payload, headers=headers, timeout=10.0)
+        if response.status_code in (200, 201, 202):
+            return True
+        else:
+            print(f"[Email] Brevo API error: {response.text}")
     except Exception as e:
         print(f"[Email] Send error to {recipient}: {e}")
     return False
@@ -810,19 +815,12 @@ async def _send_email_message(server: str, port: int, user: str, password: str, 
 
 async def send_daily_email_report():
     """Core function: build report and dispatch to all configured recipients."""
-    server     = os.getenv("SMTP_SERVER", "")
-    port_str   = os.getenv("SMTP_PORT", "587")
-    user       = os.getenv("SMTP_USER", "")
-    password   = os.getenv("SMTP_PASSWORD", "")
+    api_key    = os.getenv("BREVO_API_KEY", "")
+    sender     = os.getenv("EMAIL_SENDER", "kelvinkimani513@gmail.com")
     recipients_raw = os.getenv("EMAIL_RECIPIENTS", "")
 
-    try:
-        port = int(port_str)
-    except ValueError:
-        port = 587
-
-    if not server or not user or not password or "your_" in user:
-        print("[Email] Credentials not configured — skipping report.")
+    if not api_key or "your_" in api_key:
+        print("[Email] Brevo API Key not configured — skipping report.")
         return
 
     recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
@@ -834,7 +832,7 @@ async def send_daily_email_report():
     report_text = await _build_report_text()
 
     for recipient in recipients:
-        ok = await _send_email_message(server, port, user, password, recipient, report_text)
+        ok = await _send_email_message(api_key, sender, recipient, "OICS Daily Business Report", report_text)
         status = "[SUCCESS]" if ok else "[FAILED]"
         print(f"[Email] {status} -> {recipient}")
 
@@ -845,22 +843,15 @@ async def trigger_email_report(req: EmailReportRequest = EmailReportRequest()):
     Manually trigger the Email daily report.
     Optionally override recipients via the request body.
     """
-    server     = os.getenv("SMTP_SERVER", "")
-    port_str   = os.getenv("SMTP_PORT", "587")
-    user       = os.getenv("SMTP_USER", "")
-    password   = os.getenv("SMTP_PASSWORD", "")
+    api_key    = os.getenv("BREVO_API_KEY", "")
+    sender     = os.getenv("EMAIL_SENDER", "kelvinkimani513@gmail.com")
     recipients_env = os.getenv("EMAIL_RECIPIENTS", "")
     
-    try:
-        port = int(port_str)
-    except ValueError:
-        port = 587
-
-    if not server or not user or not password or "your_" in user:
+    if not api_key or "your_" in api_key:
         return EmailReportResponse(
             success=False,
             sent_to=[],
-            message="Email credentials not configured. Add SMTP_SERVER, SMTP_USER, and SMTP_PASSWORD to ai_service/.env",
+            message="Email credentials not configured. Add BREVO_API_KEY to your environment variables.",
         )
 
     recipients = req.recipients or [r.strip() for r in recipients_env.split(",") if r.strip()]
@@ -868,14 +859,14 @@ async def trigger_email_report(req: EmailReportRequest = EmailReportRequest()):
         return EmailReportResponse(
             success=False,
             sent_to=[],
-            message="No recipients configured. Set EMAIL_RECIPIENTS in ai_service/.env",
+            message="No recipients configured. Set EMAIL_RECIPIENTS in your environment variables.",
         )
 
     report_text = await _build_report_text()
     sent_to, failed = [], []
 
     for recipient in recipients:
-        ok = await _send_email_message(server, port, user, password, recipient, report_text)
+        ok = await _send_email_message(api_key, sender, recipient, "OICS Daily Business Report", report_text)
         (sent_to if ok else failed).append(recipient)
 
     success = len(sent_to) > 0
@@ -896,28 +887,21 @@ async def send_shipped_notification(req: ShippedEmailRequest):
     """
     Send an AI-generated shipped notification email to the customer with a unique tracking code.
     """
-    server     = os.getenv("SMTP_SERVER", "")
-    port_str   = os.getenv("SMTP_PORT", "587")
-    user       = os.getenv("SMTP_USER", "")
-    password   = os.getenv("SMTP_PASSWORD", "")
-    api_key    = os.getenv("GEMINI_API_KEY")
+    api_key    = os.getenv("BREVO_API_KEY", "")
+    sender     = os.getenv("EMAIL_SENDER", "kelvinkimani513@gmail.com")
+    gemini_key = os.getenv("GEMINI_API_KEY")
 
-    if not server or not user or not password or "your_" in user:
+    if not api_key or "your_" in api_key:
         return ShippedEmailResponse(
             success=False,
-            message="Email credentials not configured."
+            message="Email credentials not configured. Add BREVO_API_KEY."
         )
         
-    if not api_key or api_key == "your_gemini_api_key_here":
+    if not gemini_key or gemini_key == "your_gemini_api_key_here":
         return ShippedEmailResponse(
             success=False,
             message="Gemini API Key not configured."
         )
-
-    try:
-        port = int(port_str)
-    except ValueError:
-        port = 587
 
     # Generate tracking code
     import uuid
@@ -925,7 +909,7 @@ async def send_shipped_notification(req: ShippedEmailRequest):
 
     # Use AI to generate a friendly message
     try:
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=gemini_key)
         prompt = f"""
         Write a short, friendly, and professional shipping notification email to a customer.
         Customer Name: {req.customer_name}
@@ -946,7 +930,7 @@ async def send_shipped_notification(req: ShippedEmailRequest):
         email_body = f"Hello {req.customer_name},\n\nYour order {req.order_id} has been shipped!\n\nYour tracking code is: {tracking_code}\n\nThank you for shopping with us!"
 
     # Send the email
-    ok = await _send_email_message(server, port, user, password, req.customer_email, email_body)
+    ok = await _send_email_message(api_key, sender, req.customer_email, f"Your order {req.order_id} has shipped!", email_body)
     
     if ok:
         return ShippedEmailResponse(
